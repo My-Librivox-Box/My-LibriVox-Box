@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>My LibriVox Box</title>
+<link rel="manifest" href="app.webmanifest">
+<meta name="apple-mobile-web-app-title" content="LibriVox Box">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+:root{
+  --bg:#efeadf; --ink:#2b2620; --muted:#8a8378; --panel:#ffffff; --line:#e4ded2;
+  --unread:#e3ddce; --hdr-cell:#d9d0be; --band:#6b4a32;
+  --oxblood:#7a2f2b; --teal:#2b5752; --plum:#66304c; --navy:#303d66; --ochre:#8a6a3f; --olive:#5b6633; --slate:#234a5e;
+  --serif:Georgia,'Times New Roman',serif; --sans:Arial,Helvetica,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:var(--serif);background:var(--bg);color:var(--ink);min-height:100vh;
+  padding:calc(var(--header-h,90px) + 4px) 4px calc(var(--footer-h,0px) + 4px)}
+button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:none}
+a{color:inherit}
+input{-webkit-user-select:text;user-select:text}
+button:focus-visible,input:focus-visible,.book-row:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.screen{display:none;max-width:720px;margin:0 auto}
+.screen.active{display:block}
+
+/* ===== bookcloth (Stack Tracker's woven cloth, painted on a canvas) ===== */
+.cloth{position:relative;overflow:hidden;background:var(--cloth,var(--olive));color:#fff}
+.cloth > canvas{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}
+.cloth > .lbl{position:relative}
+.cloth:active > canvas{filter:brightness(.92)}
+
+/* ===== frozen header: walnut band ===== */
+.app-header{position:fixed;top:0;left:0;right:0;z-index:9;display:none;flex-direction:column;gap:4px;
+  padding:calc(4px + env(safe-area-inset-top)) 4px 4px;background:var(--band);border-top:3px solid #000;border-bottom:3px solid #000}
+.app-header.on{display:flex}
+.hdr-row{display:flex;align-items:stretch;gap:4px;max-width:720px;width:100%;margin:0 auto}
+.hdr-row > *{min-width:0}
+
+/* page tabs: linen cards; the picked one in its bookcloth */
+#tabs .tab{flex:1 1 0;height:34px;border:3px solid #000;border-radius:8px;background:var(--hdr-cell);color:var(--ink);
+  font:700 min(.74rem,2.95vw)/1 var(--sans);text-transform:uppercase;letter-spacing:.3px}
+#tabs .tab > canvas{display:none}
+#tabs .tab.active{color:#fff}
+#tabs .tab.active > canvas{display:block}
+
+/* filter / sort card, with search */
+#sortbar{position:relative;flex:1;height:30px;border:3px solid #000;border-radius:8px;background:var(--panel);overflow:hidden;
+  display:flex;align-items:center;justify-content:center;cursor:pointer}
+.sb-btn{position:absolute;top:0;bottom:0;width:30px;display:flex;align-items:center;justify-content:center;z-index:2}
+.sb-btn svg{width:13px;height:13px;display:block}
+#sbSearch{left:0;border-right:3px solid #000;background:var(--panel)}
+#sbSearch svg{stroke:var(--ink)}
+#sbClose{right:0;border-left:3px solid #000;background:var(--oxblood);display:none}
+.sb-text{display:flex;align-items:baseline;gap:5px;min-width:0;padding:0 8px 0 38px;
+  font:700 min(.74rem,2.95vw)/1 var(--sans);text-transform:uppercase;white-space:nowrap}
+.sort-k{color:var(--muted);flex:none}
+.sort-v{color:var(--ink);overflow:hidden;text-overflow:ellipsis;min-width:0}
+#sortName{flex:none}
+.sort-v + .sort-k{margin-left:2px}
+#sbQ{position:absolute;left:30px;right:30px;top:0;bottom:0;display:none;border:0;outline:0;background:transparent;
+  font:700 min(.8rem,3.3vw) var(--sans);text-transform:uppercase;color:var(--ink);padding:0 8px;-webkit-appearance:none;appearance:none}
+#sbQ::placeholder{color:var(--muted)}
+#sortbar.searching{cursor:text}
+#sortbar.searching .sb-text{visibility:hidden}
+#sortbar.searching #sbSearch{background:var(--ink)}
+#sortbar.searching #sbSearch svg{stroke:#fff}
+#sortbar.searching #sbClose{display:flex}
+#sortbar.searching #sbQ{display:block}
+
+/* sub-page header: Back on the left, the title centred on the whole window */
+.sh-head{position:fixed;top:0;left:0;right:0;z-index:9;display:none;align-items:stretch;padding-top:env(safe-area-inset-top);
+  background:#000;border-top:3px solid #000;border-bottom:3px solid #000}
+.sh-head.on{display:flex}
+#backBtn{flex:0 0 25%;height:42px;border-right:3px solid #000;font:700 min(.78rem,3.1vw)/1 var(--sans);letter-spacing:.3px;text-transform:uppercase}
+.sh-head h2{flex:1 1 0;min-width:0;height:42px;padding:0 25% 0 6px;display:flex;align-items:center;justify-content:center;background:var(--hdr-cell);
+  font:700 min(.78rem,3.1vw)/1.1 var(--sans);letter-spacing:.3px;text-transform:uppercase;color:var(--ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sh-head h2 span{overflow:hidden;text-overflow:ellipsis}
+
+/* ===== frozen footer: walnut band ===== */
+#app-footer{position:fixed;left:0;right:0;bottom:0;z-index:9;display:none;flex-direction:column;gap:4px;
+  padding:4px 4px calc(4px + env(safe-area-inset-bottom));background:var(--band);border-top:3px solid #000}
+#app-footer.on{display:flex}
+.foot-row{display:flex;gap:4px;max-width:720px;width:100%;margin:0 auto}
+.cloth-btn{flex:1 1 0;min-width:0;height:45px;border:3px solid #000;border-radius:8px;display:flex;align-items:center;justify-content:center;text-decoration:none}
+.cloth-btn > .lbl{font:700 min(1rem,4vw)/1 var(--serif);letter-spacing:.14em;text-transform:uppercase;color:#fff;white-space:nowrap}
+.cloth-btn.sm > .lbl{font-size:min(.8rem,3.2vw);letter-spacing:.08em}
+.cloth-btn.wide{flex:2.2 1 0}
+.cloth-btn[disabled]{opacity:.5;cursor:default}
+
+/* sample strip (in the footer) */
+#player{display:none;height:45px;border:3px solid #000;border-radius:8px;background:var(--panel);overflow:hidden}
+#player.show{display:flex}
+#pPlay{width:42px;flex:none;border-right:3px solid #000;background:var(--ink);color:#fff;font:700 16px/1 var(--sans)}
+#pMid{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:3px;padding:0 8px;cursor:pointer}
+#pTitle{font:600 .84rem/1.1 var(--serif);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pseek{display:flex;align-items:center;gap:6px}
+.pseek span{font:700 .6rem var(--sans);color:var(--muted);min-width:34px;text-align:center}
+input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:8px;background:var(--hdr-cell);border:2px solid #000;border-radius:5px;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:4px;background:var(--ink);border:2px solid #000;cursor:pointer}
+input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:4px;background:var(--ink);border:2px solid #000;cursor:pointer}
+#pClose{width:30px;flex:none;border-left:3px solid #000;background:var(--oxblood);color:#fff;font:700 15px/1 var(--sans)}
+
+/* ===== list divider (Georgia, uppercase, black rules) ===== */
+.list-divider{display:flex;align-items:center;gap:10px;height:40px;padding:0 4px}
+.list-divider::before,.list-divider::after{content:'';flex:1;height:3px;background:#000;border-radius:2px}
+.ld-name{flex:none;max-width:75%;font:600 .9rem var(--serif);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:uppercase;letter-spacing:.5px}
+
+/* ===== book rows ===== */
+.book-row{text-decoration:none;color:inherit;position:relative;display:flex;align-items:center;gap:8px;height:56px;padding:0 8px 0 0;margin-bottom:4px;
+  background:var(--panel);border:3px solid #000;border-radius:8px;cursor:pointer;overflow:hidden}
+.book-row:active{filter:brightness(.96)}
+.cover{width:44px;flex:none;align-self:stretch;background:var(--unread);border-right:3px solid #000;display:flex;align-items:center;justify-content:center;
+  font:700 1.1rem var(--serif);color:var(--muted);overflow:hidden}
+.cover img{width:100%;height:100%;object-fit:cover;display:block}
+.br-main{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;line-height:1.15}
+.book-row.saved .br-main{padding-left:16px}
+.br-title{font:600 .9rem var(--serif);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.br-author{font:400 .66rem var(--sans);color:rgba(43,38,32,.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.br-prog{flex:none;text-align:right;line-height:1.2;max-width:42%}
+.br-pages{font:600 .82rem var(--serif);color:var(--ink);white-space:nowrap}
+.br-pct{font:400 .62rem var(--sans);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:uppercase}
+/* saved: a ribbon bookmark hanging over the top edge */
+.book-row.saved::after{content:'';position:absolute;top:-3px;left:52px;width:10px;height:22px;background:var(--oxblood);
+  border:2px solid #000;border-top:none;clip-path:polygon(0 0,100% 0,100% 100%,50% 75%,0 100%)}
+
+/* ===== small parts ===== */
+.hint{width:100%;height:36px;margin-bottom:4px;border:3px solid #000;border-radius:8px;background:var(--hdr-cell);
+  font:700 min(.74rem,2.95vw)/1 var(--sans);text-transform:uppercase;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 8px}
+.so-empty{padding:36px 12px;text-align:center;font:400 .8rem/1.4 var(--sans);color:var(--muted)}
+.so-empty.err{color:var(--oxblood)}
+.spin{display:inline-block;width:20px;height:20px;border:3px solid var(--hdr-cell);border-top-color:var(--ink);border-radius:50%;animation:sp .8s linear infinite;vertical-align:middle;margin-right:8px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.list-btn{margin:0 0 4px;width:100%}
+
+/* ===== sort & filter page ===== */
+.so-opt{text-decoration:none;color:inherit;width:100%;height:45px;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:2px;padding:0 8px;margin-bottom:4px;
+  background:var(--panel);border:3px solid #000;border-radius:8px;text-align:left}
+.so-opt b{font:700 .78rem/1.15 var(--sans);letter-spacing:.3px;text-transform:uppercase;color:var(--ink)}
+.so-opt span{font:400 .58rem/1.2 var(--sans);letter-spacing:.3px;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.so-opt.on{background:var(--ink)}
+.so-opt.on b{color:#fff}
+.so-opt.on span{color:#cfc8ba}
+.so-grid{display:grid;grid-template-columns:1fr 1fr;column-gap:4px}
+
+/* ===== book page ===== */
+.card{background:var(--panel);border:3px solid #000;border-radius:8px;overflow:hidden;margin-bottom:4px}
+.hero{display:flex;min-height:150px}
+.hero .cover{width:110px;font-size:2.4rem}
+.hero-info{flex:1;min-width:0;padding:10px;display:flex;flex-direction:column;justify-content:center;gap:4px}
+.hero-title{font:700 1.15rem/1.2 var(--serif);color:var(--ink);display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.hero-author{font:400 .8rem var(--sans);color:rgba(43,38,32,.8)}
+.hero-meta{font:400 .66rem var(--sans);color:var(--muted);text-transform:uppercase;letter-spacing:.3px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);height:52px;margin-bottom:4px;border:3px solid #000;border-radius:8px}
+.stats > canvas{z-index:0}
+.stat{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.stat + .stat::before{content:'';position:absolute;left:0;top:10px;bottom:10px;width:2px;background:rgba(255,255,255,.35)}
+.stat b{font:700 .95rem var(--serif);color:#fff;white-space:nowrap}
+.stat small{font:700 .52rem var(--sans);letter-spacing:.6px;text-transform:uppercase;color:rgba(255,255,255,.75)}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}
+.chip{height:26px;padding:0 9px;display:flex;align-items:center;border:2.5px solid #000;border-radius:6px;background:var(--hdr-cell);
+  font:700 .62rem var(--sans);text-transform:uppercase;letter-spacing:.3px;color:var(--ink)}
+.desc{padding:10px 10px 8px;font:400 .9rem/1.45 var(--serif);color:var(--ink);cursor:pointer}
+.desc .txt{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.desc.open .txt{display:block}
+.desc .more{margin-top:4px;font:700 .6rem var(--sans);color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.sec-row{height:48px;padding:0 8px}
+.sec-n{width:26px;flex:none;font:600 .82rem var(--serif);color:var(--muted);text-align:center}
+.sec-row.now{background:var(--ink)}
+.sec-row.now .br-title,.sec-row.now .br-pages{color:#fff}
+.sec-row.now .br-author,.sec-row.now .sec-n{color:#cfc8ba}
+
+.toast{position:fixed;left:50%;top:calc(var(--header-h,90px) + 10px);transform:translateX(-50%);background:var(--ink);border:3px solid #000;border-radius:8px;
+  color:#fff;padding:8px 14px;font:700 .75rem var(--sans);text-transform:uppercase;letter-spacing:.3px;z-index:20;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<!-- home header: page tabs, then filter / sort / search -->
+<header class="app-header on" id="homeHeader">
+  <div class="hdr-row" id="tabs">
+    <button class="tab cloth active" data-tab="browse" data-cloth="#7a2f2b"><canvas aria-hidden="true"></canvas><span class="lbl">Browse</span></button>
+    <button class="tab cloth" data-tab="saved" data-cloth="#2b5752"><canvas aria-hidden="true"></canvas><span class="lbl">Saved</span></button>
+  </div>
+  <div class="hdr-row">
+    <div id="sortbar">
+      <span class="sb-btn" id="sbSearch" aria-label="Search"><svg viewBox="0 0 24 24" fill="none" stroke-width="3.4" stroke-linecap="round"><circle cx="10" cy="10" r="6.5"/><path d="M15 15l6 6"/></svg></span>
+      <input id="sbQ" type="text" placeholder="Title or author" aria-label="Search titles and authors" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+      <span class="sb-btn" id="sbClose" aria-label="Close search"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
+      <div class="sb-text"><span class="sort-k">Filter by:</span><span class="sort-v" id="filterName">All books</span><span class="sort-k">• Sort by:</span><span class="sort-v" id="sortName">Newest</span></div>
+    </div>
+  </div>
+</header>
+
+<!-- sub-page header: Back + title -->
+<header class="sh-head" id="subHeader">
+  <button class="cloth" id="backBtn" data-cloth="#7a2f2b"><canvas aria-hidden="true"></canvas><span class="lbl">Back</span></button>
+  <h2><span id="hTitle">Sort and Filter</span></h2>
+</header>
+
+<main class="screen active" id="home"><div id="homeBody"></div></main>
+<main class="screen" id="sortScreen"><div id="sortBody"></div></main>
+<main class="screen" id="bookScreen"><div id="bookBody"></div></main>
+<main class="screen" id="dlScreen"><div id="dlBody"></div></main>
+
+<!-- frozen footer: the sample strip, and the book's actions -->
+<footer id="app-footer">
+  <div class="foot-row" id="player">
+    <button id="pPlay" aria-label="Play">▶</button>
+    <div id="pMid">
+      <div id="pTitle">—</div>
+      <div class="pseek"><span id="pCur">0:00</span><input type="range" id="pSeek" min="0" max="1000" value="0" aria-label="Seek"><span id="pDur">0:00</span></div>
+    </div>
+    <button id="pClose" aria-label="Stop sample">✕</button>
+  </div>
+  <div class="foot-row" id="footActions"></div>
+</footer>
+<audio id="audio" preload="none"></audio>
+<div class="toast" id="toast"></div>
+
+<script>
+
+(() => {
+// ================= STORAGE =================
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+};
+let favs = store.get('lv_favs', {});   // {id:{book:{...},added}}
+let prefs = Object.assign({ sort:'newest', len:'any', lang:'all', genre:'' }, store.get('lv_prefs', {}));
+const savePrefs = () => store.set('lv_prefs', prefs);
+
+// ================= API =================
+const API = 'https://librivox.org/api/feed/audiobooks/';
+const cache = new Map();
+
+function qs(params){
+  return Object.entries(params).filter(([,v]) => v !== undefined && v !== '')
+    .map(([k,v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');
+}
+function jsonp(url, ms = 12000){
+  return new Promise((res, rej) => {
+    const cb = 'lvcb_' + Date.now() + '_' + Math.floor(Math.random()*1e6);
+    const s = document.createElement('script');
+    let t;
+    const done = () => { clearTimeout(t); try{ delete window[cb]; }catch(e){ window[cb] = undefined; } s.remove(); };
+    window[cb] = d => { done(); res(d); };
+    s.onerror = () => { done(); rej(new Error('jsonp')); };
+    t = setTimeout(() => { done(); rej(new Error('timeout')); }, ms);
+    s.src = url + '&callback=' + cb;
+    document.head.appendChild(s);
+  });
+}
+async function fetchJSON(url){
+  const r = await fetch(url);
+  const txt = await r.text();
+  if (/could not be found/i.test(txt)) return { books: [] };
+  if (!r.ok) throw new Error('http ' + r.status);
+  return JSON.parse(txt);
+}
+async function api(params){
+  const key = qs(params);
+  if (cache.has(key)) return cache.get(key);
+  const p = (async () => {
+    try { return await jsonp(API + '?' + qs({...params, format:'jsonp'})); } catch(e){}
+    const jsonUrl = API + '?' + qs({...params, format:'json'});
+    try { return await fetchJSON(jsonUrl); } catch(e){}
+    try { return await fetchJSON('https://api.allorigins.win/raw?url=' + encodeURIComponent(jsonUrl)); } catch(e){}
+    try { return await fetchJSON('https://corsproxy.io/?url=' + encodeURIComponent(jsonUrl)); } catch(e){}
+    return { books: [], _failed: true };
+  })();
+  const out = await p;
+  const norm = { books: Array.isArray(out && out.books) ? out.books : (out && out.books ? Object.values(out.books) : []), failed: !!(out && out._failed) };
+  if (!norm.failed) cache.set(key, norm);
+  return norm;
+}
+
+// ================= HELPERS =================
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const https = u => (u || '').replace(/^http:\/\//i, 'https://');
+const stripHTML = h => { const d = new DOMParser().parseFromString(String(h||''), 'text/html'); return (d.body.textContent || '').trim(); };
+const authors = b => (b.authors || []).map(a => [a.first_name, a.last_name].filter(Boolean).join(' ')).join(', ') || 'Unknown author';
+const fmt = s => { s = Math.max(0, Math.floor(s||0)); const h = Math.floor(s/3600), m = Math.floor(s%3600/60), x = s%60; return (h ? h + ':' + String(m).padStart(2,'0') : m) + ':' + String(x).padStart(2,'0'); };
+const toSecs = t => { if (!t) return 0; if (/^\d+$/.test(t)) return +t; return String(t).split(':').reduce((a,v) => a*60 + (+v||0), 0); };
+const initial = t => (String(t||'?').replace(/^(the|a|an)\s+/i,'').trim()[0] || '?').toUpperCase();
+function slim(b){ return { id:b.id, title:b.title, authors:b.authors, totaltime:b.totaltime, totaltimesecs:b.totaltimesecs, language:b.language, num_sections:b.num_sections, coverart_thumbnail:b.coverart_thumbnail, coverart_jpg:b.coverart_jpg }; }
+function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 1600); }
+function coverHTML(b, big){
+  const src = https(big ? (b.coverart_jpg || b.coverart_thumbnail) : (b.coverart_thumbnail || b.coverart_jpg));
+  const ini = esc(initial(b.title));
+  return `<div class="cover">${src ? `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.parentNode.textContent='${ini}'">` : ini}</div>`;
+}
+const loading = txt => `<div class="so-empty"><span class="spin"></span>${esc(txt||'Loading')}…</div>`;
+const empty = (ic, txt) => `<div class="so-empty">${esc(txt)}</div>`;
+const errBox = txt => `<div class="so-empty err">${esc(txt)}</div>`;
+const divider = t => `<div class="list-divider"><span class="ld-name">${esc(t)}</span></div>`;
+const clothBtn = (attrs, color, label, cls = '') => `<button class="cloth cloth-btn ${cls}" data-cloth="${color}" ${attrs}><canvas aria-hidden="true"></canvas><span class="lbl">${label}</span></button>`;
+const clothLink = (href, color, label, cls = '') => `<a class="cloth cloth-btn ${cls}" data-cloth="${color}" href="${esc(href)}" target="_blank" rel="noopener"><canvas aria-hidden="true"></canvas><span class="lbl">${label}</span></a>`;
+
+
+const secsOf = b => +b.totaltimesecs || toSecs(b.totaltime);
+const lastName = b => ((b.authors && b.authors[0] && (b.authors[0].last_name || b.authors[0].first_name)) || '').toLowerCase();
+const sortTitle = b => String(b.title || '').replace(/^(the|a|an)\s+/i, '').toLowerCase();
+
+// ================= SORT / FILTER DEFINITIONS =================
+const SORTS = [
+  { id:'newest', name:'Newest',     desc:'Most recently added to LibriVox', server:'desc' },
+  { id:'oldest', name:'Oldest',     desc:'First books added to LibriVox',   server:'asc' },
+  { id:'title',  name:'Title A–Z',  desc:'Ignores leading The / A / An',    fn:(a,b) => sortTitle(a).localeCompare(sortTitle(b)) },
+  { id:'author', name:'Author A–Z', desc:'By last name',                    fn:(a,b) => lastName(a).localeCompare(lastName(b)) || sortTitle(a).localeCompare(sortTitle(b)) },
+  { id:'short',  name:'Shortest',   desc:'Least listening time first',     fn:(a,b) => secsOf(a) - secsOf(b) },
+  { id:'long',   name:'Longest',    desc:'Most listening time first',       fn:(a,b) => secsOf(b) - secsOf(a) },
+  // popularity: LibriVox has no stats, so these load from the Internet Archive, which hosts every recording
+  { id:'popular', name:'Most Popular',      desc:'All-time downloads · Internet Archive',   ia:'downloads desc', stat:'downloads' },
+  { id:'week',    name:'Trending This Week', desc:'Downloads in the last 7 days · Internet Archive',  ia:'week desc',  stat:'week' },
+  { id:'month',   name:'Trending This Month',desc:'Downloads in the last 30 days · Internet Archive', ia:'month desc', stat:'month' },
+  { id:'rated',   name:'Top Rated',          desc:'Average rating, 3+ reviews · Internet Archive',     ia:'avg_rating desc', stat:'rating', minReviews:3 },
+  { id:'reviewed',name:'Most Reviewed',      desc:'Number of reviews · Internet Archive',              ia:'num_reviews desc', stat:'reviews' }
+];
+const LENS = [
+  { id:'any', name:'Any length', desc:'Every book',          test:() => true },
+  { id:'u1',  name:'Under 1 hr', desc:'Short works',         test:s => s > 0 && s < 3600 },
+  { id:'1-5', name:'1–5 hrs',    desc:'An afternoon or two', test:s => s >= 3600 && s < 18000 },
+  { id:'5-10',name:'5–10 hrs',   desc:'A typical novel',     test:s => s >= 18000 && s < 36000 },
+  { id:'10+', name:'10+ hrs',    desc:'Long reads',          test:s => s >= 36000 }
+];
+// keywords: LibriVox's genre search matches anywhere in the genre name
+const GENRES = [
+  ['Adventure','Action & adventure'], ['Children','Children\'s'], ['Detective','Detective & mystery'],
+  ['Science Fiction','Science fiction'], ['Fantas','Fantasy & fantastic'], ['Horror','Horror & supernatural'],
+  ['Gothic','Gothic'], ['Humor','Humorous'], ['Romance','Romance'], ['Historical Fiction','Historical fiction'],
+  ['War','War & military'], ['Western','Westerns'], ['Nautical','Nautical & marine'], ['Short Stories','Short stories'],
+  ['Myths','Myths, legends & fairy tales'], ['Poetry','Poetry'], ['Drama','Plays & drama'],
+  ['Biography','Biography & memoir'], ['History','History'], ['Philosophy','Philosophy'], ['Religion','Religion'],
+  ['Travel','Travel & geography'], ['Nature','Nature'], ['Essays','Essays & short works'], ['Letters','Letters']
+];
+const curSort = () => SORTS.find(s => s.id === prefs.sort) || SORTS[0];
+const curLen = () => LENS.find(l => l.id === prefs.len) || LENS[0];
+const genreName = () => (GENRES.find(g => g[0] === prefs.genre) || [,''])[1];
+
+function filterLabel(){
+  const parts = [];
+  if (prefs.genre) parts.push(genreName());
+  if (prefs.lang !== 'all') parts.push(prefs.lang);
+  if (prefs.len !== 'any') parts.push(curLen().name);
+  return parts.join(' · ') || 'All books';
+}
+function updateBar(){ $('filterName').textContent = filterLabel(); $('sortName').textContent = curSort().name; }
+
+// apply client-side search / filter / sort to a list of books
+function view(books){
+  const q = searchLive.trim().toLowerCase();
+  const len = curLen(), s = curSort();
+  let out = books.filter(b =>
+    (prefs.lang === 'all' || (b.language || '') === prefs.lang) &&
+    (b.ia != null || len.test(secsOf(b))) &&
+    (!q || String(b.title||'').toLowerCase().includes(q) || authors(b).toLowerCase().includes(q)));
+  if (s.fn) out = out.slice().sort(s.fn);   // popularity sorts keep the Internet Archive's order
+  return out;
+}
+
+function bookCard(b){
+  const fav = !!favs[b.id];
+  let top, sub;
+  if (b.ia != null){ const st = statLine(b).split(' · '); top = st[0]; sub = [st[1], b.language].filter(Boolean).join(' · '); }
+  else { top = b.totaltime || ''; sub = [b.language, b.num_sections ? b.num_sections + ' sections' : ''].filter(Boolean).join(' · '); }
+  return `<div class="book-row ${fav ? 'saved' : ''}" data-open="${esc(b.id)}" role="button" tabindex="0">
+    ${coverHTML(b)}
+    <div class="br-main"><div class="br-title">${esc(b.title)}</div><div class="br-author">${esc(authors(b))}</div></div>
+    <div class="br-prog"><div class="br-pages">${esc(top)}</div><div class="br-pct">${esc(sub)}</div></div>
+  </div>`;
+}
+
+// ================= HOME =================
+let tab = 'browse';
+let searchLive = '';      // filters what's loaded, as you type
+let searchAll = '';       // last query sent to LibriVox (Enter)
+let list = { books:[], offset:0, done:false, error:false };
+const PAGE = 100;
+
+// ===== Internet Archive (popularity sorts) =====
+const IA = 'https://archive.org/advancedsearch.php';
+const IA_FIELDS = ['identifier','title','creator','language','downloads','week','month','avg_rating','num_reviews'];
+async function iaSearch(q, sort, page){
+  const qp = 'q=' + encodeURIComponent(q) + IA_FIELDS.map(f => '&fl[]=' + f).join('') + '&sort[]=' + encodeURIComponent(sort) + '&rows=' + PAGE + '&page=' + page;
+  const key = 'ia|' + qp;
+  if (cache.has(key)) return cache.get(key);
+  let out = null;
+  try { out = await jsonp(IA + '?' + qp + '&output=json'); } catch(e){}
+  const jsonUrl = IA + '?' + qp + '&output=json';
+  if (!out) try { out = await fetchJSON(jsonUrl); } catch(e){}
+  if (!out) try { out = await fetchJSON('https://api.allorigins.win/raw?url=' + encodeURIComponent(jsonUrl)); } catch(e){}
+  if (!out) try { out = await fetchJSON('https://corsproxy.io/?url=' + encodeURIComponent(jsonUrl)); } catch(e){}
+  const docs = out && out.response && out.response.docs;
+  if (!docs) return { books: [], failed: true };
+  const norm = { books: docs.map(iaToBook), total: out.response.numFound || 0 };
+  cache.set(key, norm);
+  return norm;
+}
+const one = v => Array.isArray(v) ? v[0] : v;
+function iaToBook(d){
+  const flip = c => { c = String(c).replace(/,\s*(fl\.\s*)?\d{3,4}\??-(\d{3,4})?\??\s*$/, '').trim(); const m = c.match(/^([^,]+),\s*([^,]+)$/); return m ? m[2] + ' ' + m[1] : c; };
+  const creator = [].concat(d.creator || []).map(flip).join(', ');
+  return {
+    id: 'ia:' + d.identifier, ia: d.identifier,
+    iaLast: (() => { const c = String([].concat(d.creator || [])[0] || ''); return /librivox|various|anonymous|unknown/i.test(c) ? '' : (c.includes(',') ? c.split(',')[0] : c.split(' ').pop()).trim(); })(),
+    title: String(one(d.title) || d.identifier).replace(/\s*\(version \d+[^)]*\)\s*$/i, ''),
+    authors: creator ? [{ first_name:'', last_name: creator }] : [],
+    language: normLang(one(d.language)),
+    coverart_thumbnail: 'https://archive.org/services/img/' + d.identifier,
+    downloads: +d.downloads || 0, week: +d.week || 0, month: +d.month || 0,
+    avg_rating: +d.avg_rating || 0, num_reviews: +d.num_reviews || 0
+  };
+}
+const LANGS = { eng:'English', ger:'German', deu:'German', fre:'French', fra:'French', spa:'Spanish', ita:'Italian', dut:'Dutch', nld:'Dutch', por:'Portuguese', rus:'Russian', chi:'Chinese', zho:'Chinese', jpn:'Japanese', lat:'Latin', grc:'Ancient Greek', gre:'Greek', pol:'Polish', swe:'Swedish', fin:'Finnish', dan:'Danish', nor:'Norwegian', heb:'Hebrew', hun:'Hungarian', tag:'Tagalog' };
+function normLang(l){ if (!l) return ''; const k = String(l).toLowerCase(); return LANGS[k] || (k.length <= 3 ? k.toUpperCase() : l[0].toUpperCase() + l.slice(1)); }
+const iaEsc = t => String(t).replace(/[\\+\-!(){}\[\]^"~*?:\/&|]/g, ' ').trim();
+function iaQuery(){
+  let q = 'collection:librivoxaudio';
+  if (searchAll) { const w = iaEsc(searchAll); q += ` AND (title:(${w}) OR creator:(${w}))`; }
+  if (curSort().minReviews) q += ` AND num_reviews:[${curSort().minReviews} TO 1000000]`;
+  return q;
+}
+const n = x => Number(x || 0).toLocaleString();
+function statLine(b){
+  const st = curSort().stat;
+  if (b.ia == null) return '';
+  if (st === 'week') return n(b.week) + ' this week';
+  if (st === 'month') return n(b.month) + ' this month';
+  if (st === 'rating') return '★ ' + (b.avg_rating ? b.avg_rating.toFixed(1) : '—') + ' · ' + n(b.num_reviews) + ' reviews';
+  if (st === 'reviews') return n(b.num_reviews) + ' reviews · ★ ' + (b.avg_rating ? b.avg_rating.toFixed(1) : '—');
+  return n(b.downloads) + ' downloads';
+}
+
+function baseParams(){
+  const p = { sort_order: curSort().server || 'desc' };
+  if (prefs.genre) p.genre = prefs.genre;
+  return p;
+}
+function dividerLabel(){
+  if (curSort().ia) return (searchAll ? 'Search: ' + searchAll + ' · ' : '') + curSort().name;
+  if (searchAll) return 'LibriVox: ' + searchAll;
+  return (prefs.genre ? genreName() : 'All audiobooks') + ' · ' + (curSort().server === 'asc' ? 'Oldest first' : 'Newest first');
+}
+
+async function reload(){
+  const token = {};
+  reload.token = token;
+  list = { books:[], offset:0, done:false, error:false };
+  renderHome(true);
+  if (curSort().ia) { list.page = 1; return loadMore(token); }
+  if (searchAll){
+    // one search box: look up the words as a title and as an author's last name, then merge
+    const p = baseParams();
+    const [t, a] = await Promise.all([ api({ ...p, title: searchAll, coverart:1, limit:PAGE }), api({ ...p, author: searchAll, coverart:1, limit:PAGE }) ]);
+    if (reload.token !== token) return;
+    const seen = new Set();
+    [...t.books, ...a.books].forEach(b => { if (!seen.has(b.id)) { seen.add(b.id); list.books.push(b); } });
+    list.error = t.failed && a.failed; list.done = true;
+    renderHome(); return;
+  }
+  await loadMore(token);
+}
+async function loadMore(token = reload.token){
+  if (list.books.length) renderHome(true);
+  const s = curSort();
+  const res = s.ia ? await iaSearch(iaQuery(), s.ia, list.page || 1) : await api({ ...baseParams(), coverart:1, limit:PAGE, offset:list.offset });
+  if (s.ia) list.page = (list.page || 1) + 1;
+  if (reload.token !== token) return;
+  if (res.failed){ list.error = true; renderHome(); return; }
+  list.error = false;
+  const seen = new Set(list.books.map(b => b.id));
+  res.books.forEach(b => { if (!seen.has(b.id)) list.books.push(b); });
+  list.offset += PAGE;
+  list.done = res.books.length < PAGE;
+  renderHome();
+}
+
+function renderHome(isLoading){
+  updateBar();
+  const body = $('homeBody');
+  if (tab === 'saved'){
+    const all = Object.values(favs).sort((a,b) => b.added - a.added).map(f => f.book);
+    const shown = view(all);
+    let h = divider('Saved');
+    h += !all.length ? empty('', 'Nothing saved yet. Open a book and tap Save.') : shown.length ? shown.map(bookCard).join('') : empty('', 'No saved books match.');
+    body.innerHTML = h; paintCloth(body); return;
+  }
+  let h = '';
+  if (searchLive.trim() && searchLive.trim() !== searchAll) h += `<button class="hint" data-searchall>Search all of LibriVox for “${esc(searchLive.trim())}” ▶</button>`;
+  h += divider(dividerLabel());
+  if (list.error && !list.books.length) { body.innerHTML = h + errBox("Couldn't reach LibriVox. Check your connection and try again.") + clothBtn('data-retry', '#303d66', 'Retry', 'list-btn'); paintCloth(body); return; }
+  if (!list.books.length){ body.innerHTML = h + (isLoading ? loading('Loading') : empty('', 'No audiobooks found.')); return; }
+  const shown = view(list.books);
+  h += shown.length ? shown.map(bookCard).join('') : empty('', 'Nothing loaded matches. Load more, or change the filter.');
+  if (isLoading) h += loading('Loading more');
+  else if (list.error) h += clothBtn('data-more', '#303d66', 'Retry', 'list-btn');
+  else if (!list.done) h += clothBtn('data-more', '#303d66', 'Load More', 'list-btn');
+  body.innerHTML = h; paintCloth(body);
+}
+
+function switchTab(t){
+  tab = t;
+  document.querySelectorAll('#tabs .tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+  paintCloth($('tabs'));
+  renderHome();
+}
+
+// ===== search bar (Stack Tracker behaviour) =====
+const bar = $('sortbar'), sbQ = $('sbQ');
+let searchTimer = 0;
+bar.addEventListener('click', () => {
+  if (bar.classList.contains('searching')) { sbQ.focus(); return; }
+  show('sort');
+});
+$('sbSearch').addEventListener('click', e => { e.stopPropagation(); bar.classList.add('searching'); sbQ.focus(); window.scrollTo(0,0); });
+sbQ.addEventListener('click', e => e.stopPropagation());
+sbQ.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { if (searchLive !== sbQ.value){ searchLive = sbQ.value; renderHome(); window.scrollTo(0,0); } }, 220);
+});
+sbQ.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  sbQ.blur(); searchLive = sbQ.value;
+  if (tab === 'browse' && searchLive.trim()) { searchAll = searchLive.trim(); searchLive = ''; reload(); }
+  else renderHome();
+});
+$('sbClose').addEventListener('click', e => {
+  e.stopPropagation(); clearTimeout(searchTimer);
+  bar.classList.remove('searching'); sbQ.value = ''; sbQ.blur();
+  const hadAll = !!searchAll;
+  searchLive = ''; searchAll = '';
+  if (hadAll) reload(); else renderHome();
+  window.scrollTo(0,0);
+});
+
+// ================= SORT & FILTER PAGE =================
+function renderSort(){
+  const langs = new Set(['English']);
+  list.books.forEach(b => b.language && langs.add(b.language));
+  Object.values(favs).forEach(f => f.book.language && langs.add(f.book.language));
+  if (prefs.lang !== 'all') langs.add(prefs.lang);
+  const opt = (grp, id, name, desc, on) => `<button class="so-opt ${on ? 'on' : ''}" data-grp="${grp}" data-val="${esc(id)}"><b>${esc(name)}</b><span>${esc(desc)}</span></button>`;
+  let h = divider('Sort');
+  h += SORTS.map(s => opt('sort', s.id, s.name, s.desc, s.id === prefs.sort)).join('');
+  const iaOn = !!curSort().ia;
+  h += divider('Length');
+  h += LENS.map(l => opt('len', l.id, l.name, iaOn && l.id !== 'any' ? 'Not used with Internet Archive sorts' : l.desc, l.id === prefs.len)).join('');
+  h += divider('Language');
+  h += opt('lang', 'all', 'All languages', 'Every language', prefs.lang === 'all');
+  h += `<div class="so-grid">${[...langs].sort().map(l => opt('lang', l, l, l === 'English' ? 'Most of the catalog' : 'In loaded results', prefs.lang === l)).join('')}</div>`;
+  h += divider('Genre');
+  h += opt('genre', '', 'All genres', 'The whole catalog', !prefs.genre);
+  h += `<div class="so-grid">${GENRES.map(([k, n]) => opt('genre', k, n, iaOn ? 'Not used with IA sorts' : 'Loads from LibriVox', prefs.genre === k)).join('')}</div>`;
+  if (prefs.sort !== 'newest' || prefs.len !== 'any' || prefs.lang !== 'all' || prefs.genre) h += clothBtn('data-reset', '#7a2f2b', 'Reset', 'list-btn');
+  $('sortBody').innerHTML = h; paintCloth($('sortBody'));
+}
+function pickOption(grp, val){
+  const before = (curSort().server || curSort().ia) + '|' + prefs.genre;
+  prefs[grp] = val; savePrefs();
+  const after = (curSort().server || curSort().ia) + '|' + prefs.genre;
+  if (before !== after) reload(); else renderHome();   // server-side changes reload, the rest re-sorts what's loaded
+  renderSort(); updateBar();
+}
+
+// ================= BOOK =================
+let current = null;
+
+// Internet Archive item -> LibriVox project (matched by url_iarchive, then by title)
+let iaMap = store.get('lv_iamap', {});   // remembered matches: IA identifier -> LibriVox id
+const normT = t => String(t || '').toLowerCase().replace(/&/g, ' and ').replace(/\([^)]*\)/g, ' ')
+  .replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\b(the|a|an)\b/g, ' ').replace(/\s+/g, ' ').trim();
+function sim(a, b){
+  const A = new Set(normT(a).split(' ').filter(Boolean)), B = new Set(normT(b).split(' ').filter(Boolean));
+  if (!A.size || !B.size) return 0;
+  let k = 0; A.forEach(w => B.has(w) && k++);
+  return k / Math.max(A.size, B.size);
+}
+const iaOf = u => (String(u || '').match(/archive\.org\/details\/([^/?#\s]+)/i) || [])[1] || '';
+
+// light candidate lookup: only the fields needed to match, so author lists stay small
+async function candidates(params){
+  const lite = await api({ ...params, extended:1, limit:500, fields:'{id,title,url_iarchive,authors}' });
+  if (!lite.failed && (!lite.books.length || 'url_iarchive' in lite.books[0])) return lite.books;
+  return (await api({ ...params, extended:1, limit:100 })).books;
+}
+
+// Internet Archive item -> LibriVox project
+async function resolveIA(ident, title, last){
+  const want = ident.toLowerCase();
+  const full = async id => (await api({ id, extended:1, coverart:1 })).books[0];
+  if (iaMap[ident]) { const b = await full(iaMap[ident]); if (b) return b; }
+  const remember = async b => { iaMap[ident] = b.id; store.set('lv_iamap', iaMap); return b.sections ? b : (await full(b.id)) || b; };
+
+  const pool = new Map();
+  const check = list => { for (const b of list){ pool.set(b.id, b); if (iaOf(b.url_iarchive).toLowerCase() === want) return b; } return null; };
+
+  // 1) by author last name — reliable, and every project by that author is checked against the IA link
+  if (last){
+    const hit = check(await candidates({ author: last }));
+    if (hit) return remember(hit);
+  }
+  // 2) by title chunks
+  const words = normT(title).split(' ').filter(Boolean);
+  const tries = [words.slice(0, 4).join(' '), words.slice(0, 2).join(' '), [...words].sort((x, y) => y.length - x.length)[0]]
+    .filter((t, i, a) => t && t.length > 2 && a.indexOf(t) === i);
+  for (const t of tries){
+    const hit = check(await candidates({ title: t }));
+    if (hit) return remember(hit);
+  }
+  // 3) closest title among everything seen (same author when known)
+  let best = null, score = 0;
+  pool.forEach(b => {
+    let sc = sim(title, b.title);
+    if (last && authors(b).toLowerCase().includes(last.toLowerCase())) sc += 0.15;
+    if (sc > score) { score = sc; best = b; }
+  });
+  return best && score >= 0.75 ? remember(best) : null;
+}
+
+async function openBook(id, push = true){
+  show('book', push ? id : null);
+  const known = list.books.find(b => b.id == id) || (favs[id] && favs[id].book);
+  $('hTitle').textContent = known ? known.title : 'Loading…';
+  $('bookBody').innerHTML = loading('Loading book'); setFooter();
+  window.scrollTo(0,0);
+  let b;
+  if (String(id).startsWith('ia:')) b = await resolveIA(id.slice(3), known && known.title, known && known.iaLast);
+  else b = (await api({ id, extended:1, coverart:1 })).books[0];
+  if (!b){
+    const ia = String(id).startsWith('ia:') ? id.slice(3) : '';
+    $('bookBody').innerHTML = errBox(`Couldn't ${ia ? 'match this to a LibriVox project' : 'load this audiobook'}.`)
+      + clothBtn(`data-reopen="${esc(id)}"`, '#303d66', 'Retry', 'list-btn')
+      + (ia ? clothLink('https://archive.org/details/' + ia, '#234a5e', 'Internet Archive ↗', 'list-btn') : '');
+    paintCloth($('bookBody'));
+    return;
+  }
+  current = b;
+  b._secs = (b.sections || []).slice().sort((x,y) => (+x.section_number) - (+y.section_number));
+  if (favs[id]) { favs[id].book = slim(b); store.set('lv_favs', favs); }
+  renderBook();
+}
+
+function renderBook(){
+  const b = current; if (!b) return;
+  $('hTitle').textContent = b.title;
+  const secs = b._secs;
+  const here = sample && sample.book.id == b.id;
+  const desc = stripHTML(b.description);
+  const genres = (b.genres || []).map(g => g.name).filter(Boolean);
+  const sampling = here && !audio.paused;
+  const meta = [b.copyright_year && b.copyright_year !== '0' ? b.copyright_year : '', b.translators && b.translators.length ? 'Trans. ' + b.translators.map(a => [a.first_name,a.last_name].filter(Boolean).join(' ')).join(', ') : ''].filter(Boolean).join(' · ');
+
+  let h = `<div class="card hero">${coverHTML(b, true)}
+    <div class="hero-info"><div class="hero-title">${esc(b.title)}</div><div class="hero-author">${esc(authors(b))}</div>${meta ? `<div class="hero-meta">${esc(meta)}</div>` : ''}</div></div>`;
+  h += `<div class="cloth stats" data-cloth="#303d66"><canvas aria-hidden="true"></canvas>
+    <div class="stat"><b>${esc(b.totaltime || '—')}</b><small>Length</small></div>
+    <div class="stat"><b>${esc(secs.length || b.num_sections || '—')}</b><small>Sections</small></div>
+    <div class="stat"><b>${esc((b.language || '—').slice(0,12))}</b><small>Language</small></div></div>`;
+  if (genres.length) h += `<div class="chips">${genres.map(g => `<span class="chip">${esc(g)}</span>`).join('')}</div>`;
+  if (desc) h += `<div class="card desc" data-desc><div class="txt">${esc(desc)}</div><div class="more">More ▾</div></div>`;
+  h += divider('Sections');
+  if (!secs.length) h += empty('', 'No sections available yet.');
+  h += secs.map((s, i) => {
+    const readers = (s.readers || []).map(r => r.display_name).filter(Boolean).join(', ');
+    const on = here && sample.sec === i;
+    return `<div class="book-row sec-row ${on ? 'now' : ''}" data-sample="${i}" role="button" tabindex="0">
+      <div class="sec-n">${on ? (sampling ? '❚❚' : '▶') : i + 1}</div>
+      <div class="br-main"><div class="br-title">${esc(s.title || 'Section ' + (i+1))}</div>${readers ? `<div class="br-author">${esc(readers)}</div>` : ''}</div>
+      <div class="br-prog"><div class="br-pages">${esc(fmt(s.playtime))}</div></div></div>`;
+  }).join('');
+  $('bookBody').innerHTML = h;
+  paintCloth($('bookBody'));
+  setFooter();
+}
+
+// ================= SAMPLE =================
+const audio = $('audio');
+const SKIP_INTRO = 30;   // jump past the standard LibriVox disclaimer
+let sample = null;       // {book, sec}
+
+function playSample(book, i){
+  const s = (book._secs || [])[i]; if (!s || !s.listen_url) { toast('Section unavailable'); return; }
+  sample = { book, sec: i };
+  audio.src = https(s.listen_url);
+  audio.addEventListener('loadedmetadata', () => { if ((audio.duration || 0) > SKIP_INTRO * 3) audio.currentTime = SKIP_INTRO; }, { once:true });
+  audio.play().catch(() => {});
+  setFooter();
+  $('pTitle').textContent = `${book.title} · §${i+1}`;
+  if ('mediaSession' in navigator) {
+    const art = https(book.coverart_jpg || book.coverart_thumbnail);
+    navigator.mediaSession.metadata = new MediaMetadata({ title: s.title || book.title, artist: authors(book), album: book.title, artwork: art ? [{ src: art, sizes:'512x512', type:'image/jpeg' }] : [] });
+  }
+  if (current && current.id == book.id) renderBook();
+}
+function stopSample(){
+  audio.pause(); audio.removeAttribute('src'); audio.load(); sample = null;
+  setFooter();
+  if (current) renderBook();
+}
+const refreshBook = () => { if (current && sample && current.id == sample.book.id) renderBook(); };
+
+// footer: the sample strip whenever one is loaded; on a book page, its actions too
+function setFooter(){
+  const f = $('app-footer'), acts = $('footActions');
+  $('player').classList.toggle('show', !!sample);
+  if (screen === 'book' && current){
+    const fav = !!favs[current.id], here = sample && sample.book.id == current.id, sampling = here && !audio.paused;
+    acts.innerHTML = clothBtn(`data-sample="${here ? sample.sec : 0}" ${current._secs.length ? '' : 'disabled'}`, '#5b6633', sampling ? 'Pause' : 'Sample', 'wide')
+      + clothBtn('data-fav', fav ? '#66304c' : '#8a6a3f', fav ? 'Saved' : 'Save', 'sm')
+      + (current.url_librivox ? clothLink(https(current.url_librivox), '#234a5e', 'Site ↗', 'sm') : '')
+      + clothBtn('data-dl', '#3a2f52', 'Get ⤓', 'sm');
+    acts.style.display = 'flex';
+  } else { acts.innerHTML = ''; acts.style.display = 'none'; }
+  f.classList.toggle('on', !!sample || acts.style.display !== 'none');
+  paintCloth(f); layout();
+}
+// keep the page clear of the frozen header and footer
+function layout(){
+  const hd = screen === 'home' ? $('homeHeader') : $('subHeader');
+  document.body.style.setProperty('--header-h', hd.offsetHeight + 'px');
+  const f = $('app-footer');
+  document.body.style.setProperty('--footer-h', (f.classList.contains('on') ? f.offsetHeight : 0) + 'px');
+}
+window.addEventListener('resize', () => { layout(); paintCloth(document); });
+
+let seeking = false;
+audio.addEventListener('timeupdate', () => {
+  if (!seeking){ const d = audio.duration || 0; $('pSeek').value = d ? (audio.currentTime / d) * 1000 : 0; }
+  $('pCur').textContent = fmt(audio.currentTime);
+});
+audio.addEventListener('durationchange', () => $('pDur').textContent = fmt(audio.duration));
+audio.addEventListener('play', () => { $('pPlay').textContent = '❚❚'; refreshBook(); });
+audio.addEventListener('pause', () => { $('pPlay').textContent = '▶'; refreshBook(); });
+audio.addEventListener('ended', () => { $('pPlay').textContent = '▶'; refreshBook(); });
+audio.addEventListener('error', () => { if (audio.getAttribute('src')) toast('Sample couldn’t load'); });
+$('pSeek').addEventListener('input', e => { seeking = true; $('pCur').textContent = fmt((e.target.value/1000) * (audio.duration || 0)); });
+$('pSeek').addEventListener('change', e => { seeking = false; if (audio.duration) audio.currentTime = (e.target.value/1000) * audio.duration; });
+$('pPlay').onclick = () => audio.paused ? audio.play() : audio.pause();
+$('pClose').onclick = stopSample;
+$('pMid').addEventListener('click', e => { if (e.target.id !== 'pSeek' && sample && !(screen === 'book' && current && current.id == sample.book.id)) openBook(sample.book.id); });
+
+// ================= DOWNLOAD PAGE =================
+// whole-book zips from the Internet Archive can stall on big books, so every route is offered:
+// the zip, a torrent (best for large books), the item's file list, and each section's MP3 on its own
+function renderDownload(){
+  const b = current; if (!b) return;
+  const id = iaOf(b.url_iarchive);
+  const row = (href, name, desc, ext) => `<a class="so-opt" href="${esc(href)}" ${ext ? 'target="_blank" rel="noopener"' : 'download'}><b>${esc(name)}</b><span>${esc(desc)}</span></a>`;
+  let h = divider('Whole Book');
+  if (b.url_zip_file) h += row(https(b.url_zip_file), 'Zip of MP3s', '64kbps · one file · may stall on long books', false);
+  if (id) h += row(`https://archive.org/download/${id}/${id}_archive.torrent`, 'Torrent', 'Most reliable for big books · needs a torrent app', false);
+  if (id) h += row(`https://archive.org/download/${id}`, 'All Files', 'Internet Archive file list · every format', true);
+  if (!b.url_zip_file && !id) h += empty('', 'No whole-book download listed for this project.');
+  const secs = b._secs || [];
+  if (secs.length){
+    h += divider('By Section');
+    h += `<div class="so-empty" style="padding:0 8px 8px">If a section plays instead of saving, long-press it and choose Download link.</div>`;
+    h += secs.map((s, i) => `<a class="book-row sec-row" href="${esc(https(s.listen_url))}" download>
+      <div class="sec-n">${i + 1}</div>
+      <div class="br-main"><div class="br-title">${esc(s.title || 'Section ' + (i+1))}</div><div class="br-author">MP3 · 64kbps</div></div>
+      <div class="br-prog"><div class="br-pages">${esc(fmt(s.playtime))} ⤓</div></div></a>`).join('');
+  }
+  $('dlBody').innerHTML = h;
+}
+
+// ================= NAV =================
+let screen = 'home';
+function show(s, bookId, push = true){
+  screen = s;
+  $('home').classList.toggle('active', s === 'home');
+  $('sortScreen').classList.toggle('active', s === 'sort');
+  $('bookScreen').classList.toggle('active', s === 'book');
+  $('dlScreen').classList.toggle('active', s === 'dl');
+  $('homeHeader').classList.toggle('on', s === 'home');
+  $('subHeader').classList.toggle('on', s !== 'home');
+  if (s === 'home'){ current = null; renderHome(); paintCloth($('homeHeader')); }
+  if (s === 'dl'){ $('hTitle').textContent = 'Download'; renderDownload(); window.scrollTo(0,0); if (push) history.pushState({ dl: current && current.id }, '', '#dl'); }
+  if (s === 'sort'){ $('hTitle').textContent = 'Sort and Filter'; renderSort(); window.scrollTo(0,0); if (push) history.pushState({ sort:1 }, '', '#sort'); }
+  if (s !== 'home') paintCloth($('subHeader'));
+  if (bookId != null) history.pushState({ book: bookId }, '', '#book=' + bookId);
+  setFooter();
+}
+function goHome(){ if (screen !== 'home' && history.state) history.back(); else { show('home'); history.replaceState(null, '', location.pathname); } }
+window.addEventListener('popstate', e => {
+  if (e.state && e.state.book) openBook(e.state.book, false);
+  else if (e.state && e.state.sort) show('sort', null, false);
+  else if (e.state && e.state.dl && current) show('dl', null, false);
+  else show('home');
+});
+$('backBtn').onclick = () => { if (screen !== 'home') goHome(); };
+
+// ================= EVENTS =================
+document.querySelectorAll('#tabs .tab').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-open],[data-more],[data-retry],[data-sample],[data-fav],[data-desc],[data-reopen],[data-grp],[data-reset],[data-searchall],[data-dl]');
+  if (!t) return;
+  if (t.dataset.open) return openBook(t.dataset.open);
+  if (t.hasAttribute('data-dl') && current) return show('dl');
+  if (t.hasAttribute('data-more')) return loadMore();
+  if (t.hasAttribute('data-retry')) return reload();
+  if (t.hasAttribute('data-searchall')) { searchAll = searchLive.trim(); searchLive = ''; sbQ.value = searchAll; return reload(); }
+  if (t.dataset.reopen) return openBook(t.dataset.reopen, false);
+  if (t.hasAttribute('data-desc')) { const o = t.classList.toggle('open'); t.querySelector('.more').textContent = o ? 'Less ▴' : 'More ▾'; return; }
+  if (t.dataset.grp) return pickOption(t.dataset.grp, t.dataset.val);
+  if (t.hasAttribute('data-reset')) { const reloadNeeded = curSort().server !== 'desc' || prefs.genre; prefs = { sort:'newest', len:'any', lang:'all', genre:'' }; savePrefs(); renderSort(); if (reloadNeeded) reload(); else renderHome(); return; }
+  if (t.hasAttribute('data-fav') && current){
+    if (favs[current.id]) { delete favs[current.id]; toast('Removed from Saved'); }
+    else { favs[current.id] = { book: slim(current), added: Date.now() }; toast('Saved'); }
+    store.set('lv_favs', favs); renderBook(); return;
+  }
+  if (t.dataset.sample != null && current){
+    const i = +t.dataset.sample;
+    if (t.disabled) return;
+    if (sample && sample.book.id == current.id && sample.sec === i) { audio.paused ? audio.play() : audio.pause(); return; }
+    playSample(current, i);
+  }
+});
+
+document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.book-row')) { e.preventDefault(); e.target.click(); } });
+
+// ================= BOOKCLOTH =================
+// Stack Tracker's pearlescent bookcloth: a fine plain weave lit from the top left, with a faint shimmer,
+// drawn once per colour into a sheet and copied into each cloth card's canvas
+const CLOTH = (() => {
+  const rgb = h => [1, 3, 5].map(i => parseInt(h.substr(i, 2), 16));
+  const hash = (x, y, s) => { let h = (x * 374761393 + y * 668265263 + s * 2147483647) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967295; };
+  const fade = t => t * t * (3 - 2 * t), frac = v => v - Math.floor(v);
+  function noise(x, y, s){ const xi = Math.floor(x), yi = Math.floor(y), xf = fade(x - xi), yf = fade(y - yi);
+    const a = hash(xi, yi, s), b = hash(xi + 1, yi, s), c = hash(xi, yi + 1, s), d = hash(xi + 1, yi + 1, s);
+    return a + (b - a) * xf + (c - a) * yf + (a - b - c + d) * xf * yf; }
+  const fbm = (x, y, s) => noise(x, y, s) * .5 + noise(x * 2.1, y * 2.1, s + 1) * .3 + noise(x * 4.3, y * 4.3, s + 2) * .2;
+  const sheets = new Map(); let base = null;
+  function sheet(col, s, needW, needH){
+    const k = col.join(',') + '@' + s; let c = sheets.get(k);
+    if (c && c.width >= needW && c.height >= needH) return c;
+    const W = Math.max(needW, Math.ceil(Math.max(screen.width || 0, document.documentElement.clientWidth || 0, 420) * s));
+    const H = Math.max(needH, Math.ceil(60 * s));
+    c = document.createElement('canvas'); c.width = W; c.height = H;
+    const p = Math.max(2, Math.round(1.2 * s)) / s;
+    const weave = (u, v) => { const fu = u / p, fv = v / p, over = (Math.floor(fu) + Math.floor(fv)) & 1;
+      const across = Math.sin(Math.PI * frac(fv)) * (0.55 + 0.45 * Math.sin(Math.PI * frac(fu)));
+      const down = Math.sin(Math.PI * frac(fu)) * (0.55 + 0.45 * Math.sin(Math.PI * frac(fv)));
+      return over ? Math.max(across, down * .55) : Math.max(down, across * .55); };
+    const bk = W + 'x' + H + '@' + s;
+    if (!base || base.k !== bk){
+      const h = (u, v) => weave(u, v) * .6 + fbm(u * .1, v * .1, 13) * .2;
+      const hg = new Float32Array((W + 1) * (H + 1));
+      for (let j = 0; j <= H; j++) for (let i = 0; i <= W; i++) hg[j * (W + 1) + i] = h(i / s, j / s);
+      const L = [-.45, -.6, .66], ln = Math.hypot(...L); L.forEach((v, q) => L[q] = v / ln);
+      const Hv = [L[0], L[1], L[2] + 1], hn = Math.hypot(...Hv); Hv.forEach((v, q) => Hv[q] = v / hn);
+      const N = W * H, A = new Float32Array(N), S = new Float32Array(N), PR = new Float32Array(N), PG = new Float32Array(N), PB = new Float32Array(N);
+      for (let j = 0; j < H; j++) for (let i = 0; i < W; i++){
+        const q = j * (W + 1) + i, dx = (hg[q + 1] - hg[q]) * .9 * s, dy = (hg[q + W + 1] - hg[q]) * .9 * s;
+        const nl = Math.hypot(dx, dy, 1), nx = -dx / nl, ny = -dy / nl, nz = 1 / nl;
+        const diff = Math.max(0, nx * L[0] + ny * L[1] + nz * L[2]);
+        const spec = Math.pow(Math.max(0, nx * Hv[0] + ny * Hv[1] + nz * Hv[2]), 14) * .35;
+        const u = i / s, v = j / s, tone = 1 + (noise(u * 1.7, v * .35, 21) - .5) * .08, sh = (0.42 + 0.68 * diff) * tone;
+        const pp = .5 + .5 * Math.sin(u * .045 + v * .12), pa = .07 * (0.3 + diff), o = j * W + i;
+        A[o] = sh * (1 - pa); S[o] = 255 * spec * (1 - pa);
+        PR[o] = (215 + 30 * pp) * pa; PG[o] = (220 + 25 * (1 - pp)) * pa; PB[o] = 240 * pa;
+      }
+      base = { k: bk, A, S, PR, PG, PB };
+    }
+    const x = c.getContext('2d'), img = x.createImageData(W, H), d = img.data, [R, G, B] = col, { A, S, PR, PG, PB } = base;
+    for (let o = 0, N = W * H; o < N; o++){ const a2 = A[o], s2 = S[o], q = o * 4;
+      d[q] = R * a2 + s2 + PR[o]; d[q + 1] = G * a2 + s2 + PG[o]; d[q + 2] = B * a2 + s2 + PB[o]; d[q + 3] = 255; }
+    x.putImageData(img, 0, 0); sheets.set(k, c); return c;
+  }
+  function draw(cv, hex, bandIn = 10){
+    const col = rgb(hex), s = window.devicePixelRatio || 1, r = cv.getBoundingClientRect();
+    const W = Math.round(r.width * s), H = Math.round(r.height * s);
+    if (!W || !H) return;
+    const key = hex + '|' + bandIn;
+    if (cv.width === W && cv.height === H && cv._drawn === key) return;
+    cv.width = W; cv.height = H; cv._drawn = key;
+    const x = cv.getContext('2d');
+    x.drawImage(sheet(col, s, W, H), 0, 0, W, H, 0, 0, W, H);
+    const lg = x.createLinearGradient(0, 0, W * .25, H * 1.6); lg.addColorStop(0, 'rgba(255,255,255,.07)'); lg.addColorStop(1, 'rgba(0,0,0,.16)');
+    x.fillStyle = lg; x.fillRect(0, 0, W, H);
+    const g = x.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, 'rgba(255,255,255,.06)'); g.addColorStop(.12, 'rgba(255,255,255,0)'); g.addColorStop(.85, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.18)');
+    x.fillStyle = g; x.fillRect(0, 0, W, H);
+    if (bandIn < 0) return;
+    const bw = Math.max(2, Math.round(2 * s)), e = Math.max(1, Math.round(s)), mix = (c, t) => Math.round(c + (255 - c) * t);
+    [Math.round(bandIn * s), W - Math.round(bandIn * s) - bw].forEach(bx => {
+      const bg = x.createLinearGradient(0, 0, 0, H);
+      bg.addColorStop(0, `rgb(${col.map(c => mix(c, .52)).join(',')})`); bg.addColorStop(1, `rgb(${col.map(c => mix(c, .4)).join(',')})`);
+      x.fillStyle = bg; x.fillRect(bx, 0, bw, H);
+      x.fillStyle = 'rgba(0,0,0,.28)'; x.fillRect(bx - e, 0, e, H);
+      x.fillStyle = 'rgba(255,255,255,.12)'; x.fillRect(bx + bw, 0, e, H);
+    });
+  }
+  return { draw };
+})();
+function paintCloth(root){
+  (root || document).querySelectorAll('.cloth[data-cloth]').forEach(el => {
+    el.style.setProperty('--cloth', el.dataset.cloth);
+    const cv = el.querySelector(':scope > canvas'); if (!cv) return;
+    const band = el.classList.contains('stats') ? -1 : el.classList.contains('tab') || el.id === 'backBtn' ? 5 : 10;
+    CLOTH.draw(cv, el.dataset.cloth, band);
+  });
+}
+
+// installable + offline: the service worker keeps the app's own files
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+
+// ================= INIT =================
+const hb = (location.hash.match(/book=(\d+)/) || [])[1];
+show('home');
+history.replaceState(null, '', location.pathname);
+reload();
+if (hb) openBook(hb);
+})();
+</script>
+</body>
+</html>
