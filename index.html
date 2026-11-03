@@ -147,6 +147,8 @@ input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:4px;bac
 .so-opt.on{background:var(--ink)}
 .so-opt.on b{color:#fff}
 .so-opt.on span{color:#cfc8ba}
+.ver-opt{height:auto;min-height:45px;padding:6px 8px}
+.ver-opt b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .so-grid{display:grid;grid-template-columns:1fr 1fr;column-gap:4px}
 
 /* ===== book page ===== */
@@ -421,7 +423,7 @@ function filterLabel(){
 function updateBar(){ $('filterName').textContent = filterLabel(); $('sortName').textContent = curSort().name; }
 
 // apply client-side search / filter / sort to a list of books
-function view(books){
+function view(books, collapse = true){
   const q = searchLive.trim().toLowerCase();
   const len = curLen(), s = curSort();
   let out = books.filter(b =>
@@ -429,7 +431,15 @@ function view(books){
     (b.ia != null || len.test(secsOf(b))) &&
     (!q || String(b.title||'').toLowerCase().includes(q) || authors(b).toLowerCase().includes(q)));
   if (s.fn) out = out.slice().sort(s.fn);   // popularity sorts keep the Internet Archive's order
-  return out;
+  return collapse ? groupVersions(out) : out;
+}
+// the same book under one key: title without "(version 2)" / "(Dramatic Reading)" and subtitles, plus the author's last name
+const baseTitle = t => String(t || '').replace(/\s*\([^)]*\)\s*/g, ' ').split(':')[0].replace(/\s+/g, ' ').trim();
+const workKey = b => normT(baseTitle(b.title)) + '|' + String(b.iaLast || (b.authors && b.authors[0] && (b.authors[0].last_name || b.authors[0].first_name)) || '').toLowerCase().trim();
+function groupVersions(books){
+  const first = new Map();
+  books.forEach(b => { const k = workKey(b); if (!first.has(k)) first.set(k, { b, n: 0 }); first.get(k).n++; });
+  return [...first.values()].map(({ b, n }) => (b._versions = n, b));
 }
 
 function bookCard(b){
@@ -437,6 +447,7 @@ function bookCard(b){
   let top, sub;
   if (b.ia != null){ const st = statLine(b).split(' · '); top = st[0]; sub = [st[1], b.language].filter(Boolean).join(' · '); }
   else { top = b.totaltime || ''; sub = [b.language, b.num_sections ? b.num_sections + ' sections' : ''].filter(Boolean).join(' · '); }
+  if (b._versions > 1) sub = b._versions + ' versions' + (sub ? ' · ' + sub : '');
   return `<div class="book-row ${fav ? 'saved' : ''}" data-open="${esc(b.id)}" role="button" tabindex="0">
     ${coverHTML(b)}
     <div class="br-main"><div class="br-title">${esc(b.title)}</div><div class="br-author">${esc(authors(b))}</div></div>
@@ -552,7 +563,7 @@ function renderHome(isLoading){
   if (tab === 'main') return renderMain();
   if (tab === 'saved'){
     const all = Object.values(favs).sort((a,b) => b.added - a.added).map(f => f.book);
-    const shown = view(all);
+    const shown = view(all, false);
     let h = divider('Saved');
     h += !all.length ? empty('', 'Nothing saved yet. Open a book and tap Save.') : shown.length ? shown.map(bookCard).join('') : empty('', 'No saved books match.');
     body.innerHTML = h; paintCloth(body); return;
@@ -782,7 +793,7 @@ async function resolveIA(ident, title, last){
   return best && score >= 0.75 ? remember(best) : null;
 }
 
-async function openBook(id, push = true){
+async function openBook(id, push = true, preferTop = false){
   show('book', push ? id : null);
   const known = list.books.find(b => b.id == id) || main.pool.find(b => b.id == id) || (favs[id] && favs[id].book);
   $('hTitle').textContent = known ? known.title : 'Loading…';
@@ -803,11 +814,73 @@ async function openBook(id, push = true){
   b._secs = (b.sections || []).slice().sort((x,y) => (+x.section_number) - (+y.section_number));
   if (favs[id]) { favs[id].book = slim(b); store.set('lv_favs', favs); }
   renderBook();
+  loadVersions(b, preferTop);
+}
+
+// ================= VERSIONS =================
+// LibriVox records each reading as its own project; find the others with the same title and author
+const versions = { key: '', list: [], loading: false };
+const verLabel = t => { const m = String(t || '').match(/\(([^)]*(version|dramatic|abridged|reading)[^)]*)\)/i); return m ? m[1].replace(/\b\w/g, c => c.toUpperCase()) : 'Version 1'; };
+function readerInfo(v){
+  const names = [...new Set((v.sections || []).flatMap(s => (s.readers || []).map(r => r.display_name)).filter(Boolean))];
+  const drama = /dramatic/i.test(v.title || '');
+  if (drama) return { type: 'Dramatic', who: names.length ? names.length + ' readers' : 'Full cast' };
+  if (names.length === 1) return { type: 'Solo', who: names[0] };
+  if (names.length > 1) return { type: 'Group', who: names.length + ' readers' };
+  return { type: '', who: '' };
+}
+async function loadVersions(b, preferTop){
+  const key = workKey(b);
+  if (versions.key === key && versions.list.length) { renderVersions(); return; }
+  versions.key = key; versions.list = []; versions.loading = true; renderVersions();
+  const title = baseTitle(b.title);
+  const F = '{id,title,url_iarchive,authors,totaltime,totaltimesecs,language,sections}';
+  let res = await api({ title, extended:1, limit:50, fields: F });
+  if (res.failed || (res.books.length && !('url_iarchive' in res.books[0]))) res = await api({ title, extended:1, limit:50 });
+  if (versions.key !== key) return;
+  const list = res.books.filter(v => workKey(v) === key);
+  if (!list.some(v => v.id == b.id)) list.push(b);
+  // downloads for each version, in one Internet Archive lookup
+  const ids = list.map(v => iaOf(v.url_iarchive)).filter(Boolean);
+  if (ids.length > 1) {
+    const ia = await iaSearch('identifier:(' + ids.map(x => '"' + x + '"').join(' OR ') + ')', 'downloads desc', 1, 50);
+    const dl = new Map(ia.books.map(x => [x.ia.toLowerCase(), x.downloads]));
+    list.forEach(v => v._dl = dl.get(iaOf(v.url_iarchive).toLowerCase()) || 0);
+  }
+  list.sort((x, y) => (y._dl || 0) - (x._dl || 0) || (+x.id) - (+y.id));
+  if (versions.key !== key) return;
+  versions.list = list; versions.loading = false;
+  // opened from a list: switch to the reading most people choose
+  if (preferTop && list.length > 1 && list[0].id != b.id && current && current.id == b.id && !(sample && sample.book.id == b.id)) { switchVersion(list[0].id); return; }
+  renderVersions();
+}
+function renderVersions(){
+  const el = $('versionsBox'); if (!el || !current) return;
+  if (versions.loading) { el.innerHTML = divider('Versions') + loading('Finding versions'); return; }
+  if (versions.list.length < 2) { el.innerHTML = ''; return; }
+  const n = x => Number(x || 0).toLocaleString();
+  el.innerHTML = divider(versions.list.length + ' Versions') + versions.list.map((v, i) => {
+    const r = readerInfo(v), on = v.id == current.id;
+    const lbl = verLabel(v.title), head = [lbl, lbl.toLowerCase().includes(r.type.toLowerCase()) ? '' : r.type, r.who].filter(Boolean).join(' · ');
+    const sub = [v.totaltime, v.language, v._dl ? n(v._dl) + ' downloads' : '', i === 0 && v._dl ? 'most popular' : ''].filter(Boolean).join(' · ');
+    return `<button class="so-opt ver-opt ${on ? 'on' : ''}" data-ver="${esc(v.id)}"><b>${esc(head)}</b><span>${esc(sub)}</span></button>`;
+  }).join('');
+}
+async function switchVersion(id){
+  if (current && current.id == id) return;
+  const y = window.scrollY;
+  const b = (await api({ id, extended:1, coverart:1 })).books[0];
+  if (!b) { toast('Couldn\u2019t load that version'); return; }
+  current = b;
+  b._secs = (b.sections || []).slice().sort((x,y) => (+x.section_number) - (+y.section_number));
+  history.replaceState({ book: id }, '', '#book=' + id);
+  renderBook(); renderVersions();
+  window.scrollTo(0, y);
 }
 
 function renderBook(){
   const b = current; if (!b) return;
-  $('hTitle').textContent = b.title;
+  $('hTitle').textContent = baseTitle(b.title) || b.title;
   const secs = b._secs;
   const here = sample && sample.book.id == b.id;
   const desc = stripHTML(b.description);
@@ -816,11 +889,12 @@ function renderBook(){
   const meta = [b.copyright_year && b.copyright_year !== '0' ? b.copyright_year : '', b.translators && b.translators.length ? 'Trans. ' + b.translators.map(a => [a.first_name,a.last_name].filter(Boolean).join(' ')).join(', ') : ''].filter(Boolean).join(' · ');
 
   let h = `<div class="card hero">${coverHTML(b, true)}
-    <div class="hero-info"><div class="hero-title">${esc(b.title)}</div><div class="hero-author">${esc(authors(b))}</div>${meta ? `<div class="hero-meta">${esc(meta)}</div>` : ''}</div></div>`;
+    <div class="hero-info"><div class="hero-title">${esc(baseTitle(b.title) || b.title)}</div><div class="hero-author">${esc(authors(b))}</div>${meta ? `<div class="hero-meta">${esc(meta)}</div>` : ''}</div></div>`;
   h += `<div class="cloth stats" data-cloth="#303d66"><canvas aria-hidden="true"></canvas>
     <div class="stat"><b>${esc(b.totaltime || '—')}</b><small>Length</small></div>
     <div class="stat"><b>${esc(secs.length || b.num_sections || '—')}</b><small>Sections</small></div>
     <div class="stat"><b>${esc((b.language || '—').slice(0,12))}</b><small>Language</small></div></div>`;
+  h += `<div id="versionsBox"></div>`;
   if (genres.length) h += `<div class="chips">${genres.map(g => `<span class="chip">${esc(g)}</span>`).join('')}</div>`;
   if (desc) h += `<div class="card desc" data-desc><div class="txt">${esc(desc)}</div><div class="more">More ▾</div></div>`;
   h += divider('Sections');
@@ -834,6 +908,7 @@ function renderBook(){
       <div class="br-prog"><div class="br-pages">${esc(fmt(s.playtime))}</div></div></div>`;
   }).join('');
   $('bookBody').innerHTML = h;
+  renderVersions();
   paintCloth($('bookBody'));
   setFooter();
 }
@@ -957,9 +1032,10 @@ $('backBtn').onclick = () => { if (screen !== 'home') goHome(); };
 // ================= EVENTS =================
 document.querySelectorAll('#tabs .tab').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-open],[data-more],[data-retry],[data-sample],[data-fav],[data-desc],[data-reopen],[data-grp],[data-reset],[data-searchall],[data-dl],[data-shuffle],[data-moremain],[data-mainretry]');
+  const t = e.target.closest('[data-open],[data-more],[data-retry],[data-sample],[data-fav],[data-desc],[data-reopen],[data-grp],[data-reset],[data-searchall],[data-dl],[data-shuffle],[data-moremain],[data-mainretry],[data-ver]');
   if (!t) return;
-  if (t.dataset.open) return openBook(t.dataset.open);
+  if (t.dataset.open) return openBook(t.dataset.open, true, tab !== 'saved');
+  if (t.dataset.ver) return switchVersion(t.dataset.ver);
   if (t.hasAttribute('data-shuffle')) return pickMain();
   if (t.hasAttribute('data-moremain')) return moreMain();
   if (t.hasAttribute('data-mainretry')) return loadMain();
