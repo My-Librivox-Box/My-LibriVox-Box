@@ -176,6 +176,21 @@ input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:4px;bac
 .sec-row.now .br-title,.sec-row.now .br-pages{color:#fff}
 .sec-row.now .br-author,.sec-row.now .sec-n{color:#cfc8ba}
 
+.shelf-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:6px}
+.bk-card{position:relative;aspect-ratio:2/3.15;border:3px solid #000;border-radius:3px 8px 8px 3px;overflow:hidden;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;padding:7px 6px 6px 8px;color:#fff;text-align:center}
+.bk-card:active{filter:brightness(.94)}
+.bk-card > *:not(canvas){position:relative}
+.bk-cover{width:92%;aspect-ratio:1/1;flex:none;border:2.5px solid #000;border-radius:3px;background:var(--unread);overflow:hidden;
+  display:flex;align-items:center;justify-content:center;font:700 1.2rem var(--serif);color:var(--muted)}
+.bk-cover img{width:100%;height:100%;object-fit:cover;display:block}
+.bk-title{margin-top:5px;width:100%;font:700 min(.64rem,2.75vw)/1.15 var(--serif);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  text-shadow:0 1px 0 rgba(0,0,0,.35)}
+.bk-author{margin-top:2px;width:100%;font:400 min(.52rem,2.2vw)/1.15 var(--sans);opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bk-len{margin-top:auto;padding-top:3px;font:700 min(.58rem,2.45vw)/1 var(--serif);letter-spacing:.03em;opacity:.95}
+.bk-card.saved::after{content:'';position:absolute;top:-3px;right:8px;width:9px;height:18px;background:var(--oxblood);border:2px solid #000;border-top:none;
+  clip-path:polygon(0 0,100% 0,100% 100%,50% 75%,0 100%)}
+.btn-row{display:flex;gap:4px;margin-bottom:4px}
 .toast{position:fixed;left:50%;top:calc(var(--header-h,90px) + 10px);transform:translateX(-50%);background:var(--ink);border:3px solid #000;border-radius:8px;
   color:#fff;padding:8px 14px;font:700 .75rem var(--sans);text-transform:uppercase;letter-spacing:.3px;z-index:20;opacity:0;pointer-events:none;transition:opacity .2s}
 .toast.show{opacity:1}
@@ -186,10 +201,11 @@ input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:4px;bac
 <!-- home header: page tabs, then filter / sort / search -->
 <header class="app-header on" id="homeHeader">
   <div class="hdr-row" id="tabs">
-    <button class="tab cloth active" data-tab="browse" data-cloth="#7a2f2b"><canvas aria-hidden="true"></canvas><span class="lbl">Browse</span></button>
+    <button class="tab cloth active" data-tab="main" data-cloth="#7a2f2b"><canvas aria-hidden="true"></canvas><span class="lbl">Main</span></button>
+    <button class="tab cloth" data-tab="browse" data-cloth="#303d66"><canvas aria-hidden="true"></canvas><span class="lbl">Browse</span></button>
     <button class="tab cloth" data-tab="saved" data-cloth="#2b5752"><canvas aria-hidden="true"></canvas><span class="lbl">Saved</span></button>
   </div>
-  <div class="hdr-row">
+  <div class="hdr-row" id="sortRow">
     <div id="sortbar">
       <span class="sb-btn" id="sbSearch" aria-label="Search"><svg viewBox="0 0 24 24" fill="none" stroke-width="3.4" stroke-linecap="round"><circle cx="10" cy="10" r="6.5"/><path d="M15 15l6 6"/></svg></span>
       <input id="sbQ" type="text" placeholder="Title or author" aria-label="Search titles and authors" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
@@ -380,7 +396,7 @@ function bookCard(b){
 }
 
 // ================= HOME =================
-let tab = 'browse';
+let tab = 'main';
 let searchLive = '';      // filters what's loaded, as you type
 let searchAll = '';       // last query sent to LibriVox (Enter)
 let list = { books:[], offset:0, done:false, error:false };
@@ -487,6 +503,7 @@ async function loadMore(token = reload.token){
 function renderHome(isLoading){
   updateBar();
   const body = $('homeBody');
+  if (tab === 'main') return renderMain();
   if (tab === 'saved'){
     const all = Object.values(favs).sort((a,b) => b.added - a.added).map(f => f.book);
     const shown = view(all);
@@ -511,6 +528,9 @@ function switchTab(t){
   tab = t;
   document.querySelectorAll('#tabs .tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
   paintCloth($('tabs'));
+  $('sortRow').style.display = t === 'main' ? 'none' : '';
+  layout();
+  if (t === 'main' && !main.pool.length && !main.loading) loadMain();
   renderHome();
 }
 
@@ -541,6 +561,85 @@ $('sbClose').addEventListener('click', e => {
   if (hadAll) reload(); else renderHome();
   window.scrollTo(0,0);
 });
+
+// ================= MAIN: random popular picks =================
+const MAIN_COUNT = 24;
+const BOOK_CLOTHS = ['#7a2f2b', '#2b5752', '#66304c', '#303d66', '#8a6a3f', '#5b6633', '#234a5e', '#3a2f52'];
+const main = { pool: [], shown: [], loading: false, error: false };
+let lenCache = store.get('lv_lens', {});   // IA identifier -> length, once matched to LibriVox
+const clothFor = id => { let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) | 0; return BOOK_CLOTHS[Math.abs(h) % BOOK_CLOTHS.length]; };
+function shuffle(a){ for (let i = a.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+async function loadMain(){
+  main.loading = true; main.error = false; renderMain();
+  // the 300 most-downloaded LibriVox books, then a random handful of them
+  const pages = await Promise.all([1, 2, 3].map(p => iaSearch('collection:librivoxaudio', 'downloads desc', p)));
+  // one version per book: LibriVox often has several readings, so keep the most-downloaded (first) of each
+  const seen = new Set();
+  main.pool = pages.flatMap(p => p.books).filter(b => { const k = normT(b.title) + '|' + (b.iaLast || '').toLowerCase(); return !seen.has(k) && seen.add(k); });
+  main.error = !main.pool.length;
+  main.loading = false;
+  pickMain();
+}
+function pickMain(){
+  main.shown = shuffle(main.pool.slice()).slice(0, MAIN_COUNT);
+  main.shown.forEach(b => { if (lenCache[b.ia]) b.totaltime = lenCache[b.ia]; });
+  renderMain(); window.scrollTo(0, 0);
+  fillLengths(main.shown);
+}
+function moreMain(){
+  const have = new Set(main.shown.map(b => b.id));
+  const extra = shuffle(main.pool.filter(b => !have.has(b.id))).slice(0, MAIN_COUNT);
+  extra.forEach(b => { if (lenCache[b.ia]) b.totaltime = lenCache[b.ia]; });
+  main.shown = main.shown.concat(extra);
+  renderMain(); fillLengths(extra);
+}
+
+function bookTile(b){
+  const src = https(b.coverart_thumbnail);
+  const ini = esc(initial(b.title));
+  return `<div class="bk-card cloth ${favs[b.id] ? 'saved' : ''}" data-cloth="${clothFor(b.id)}" data-open="${esc(b.id)}" role="button" tabindex="0">
+    <canvas aria-hidden="true"></canvas>
+    <div class="bk-cover">${src ? `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.parentNode.textContent='${ini}'">` : ini}</div>
+    <div class="bk-title">${esc(b.title)}</div>
+    <div class="bk-author">${esc(authors(b))}</div>
+    <div class="bk-len" data-len="${esc(b.ia || b.id)}">${esc(b.totaltime || (b._lenTried ? '—' : '…'))}</div>
+  </div>`;
+}
+function renderMain(){
+  if (tab !== 'main') return;
+  const body = $('homeBody');
+  let h = divider('Popular Picks');
+  if (main.loading && !main.shown.length) { body.innerHTML = h + loading('Picking popular books'); return; }
+  if (main.error) { body.innerHTML = h + errBox("Couldn't reach the Internet Archive for popular books.") + clothBtn('data-mainretry', '#303d66', 'Retry', 'list-btn'); paintCloth(body); return; }
+  h += `<div class="shelf-grid">${main.shown.map(bookTile).join('')}</div>`;
+  h += `<div class="btn-row">${clothBtn('data-shuffle', '#5b6633', 'Shuffle')}${main.shown.length < main.pool.length ? clothBtn('data-moremain', '#303d66', 'More') : ''}</div>`;
+  body.innerHTML = h; paintCloth(body);
+}
+
+// lengths: the Internet Archive doesn't list them, so each pick is matched to its LibriVox project
+// (by author, checking the archive link) a few at a time; matches are remembered for next time
+let lenQueue = [], lenBusy = 0;
+function fillLengths(books){
+  books.forEach(b => { if (!b.totaltime && b.ia && !b._lenTried) lenQueue.push(b); });
+  while (lenBusy < 3 && lenQueue.length) runLen(lenQueue.shift());
+}
+async function runLen(b){
+  lenBusy++;
+  try {
+    let len = '';
+    if (b.iaLast) {
+      const list = await candidates({ author: b.iaLast });
+      const hit = list.find(x => iaOf(x.url_iarchive).toLowerCase() === b.ia.toLowerCase());
+      if (hit) { len = hit.totaltime || ''; iaMap[b.ia] = hit.id; store.set('lv_iamap', iaMap); }
+    }
+    b.totaltime = len; b._lenTried = true;
+    if (len) { lenCache[b.ia] = len; store.set('lv_lens', lenCache); }
+    document.querySelectorAll(`.bk-len[data-len="${CSS.escape(b.ia)}"]`).forEach(el => el.textContent = len || '—');
+  } catch(e) {}
+  lenBusy--;
+  if (lenQueue.length) runLen(lenQueue.shift());
+}
 
 // ================= SORT & FILTER PAGE =================
 function renderSort(){
@@ -588,7 +687,7 @@ const iaOf = u => (String(u || '').match(/archive\.org\/details\/([^/?#\s]+)/i) 
 
 // light candidate lookup: only the fields needed to match, so author lists stay small
 async function candidates(params){
-  const lite = await api({ ...params, extended:1, limit:500, fields:'{id,title,url_iarchive,authors}' });
+  const lite = await api({ ...params, extended:1, limit:500, fields:'{id,title,url_iarchive,authors,totaltime,totaltimesecs}' });
   if (!lite.failed && (!lite.books.length || 'url_iarchive' in lite.books[0])) return lite.books;
   return (await api({ ...params, extended:1, limit:100 })).books;
 }
@@ -628,7 +727,7 @@ async function resolveIA(ident, title, last){
 
 async function openBook(id, push = true){
   show('book', push ? id : null);
-  const known = list.books.find(b => b.id == id) || (favs[id] && favs[id].book);
+  const known = list.books.find(b => b.id == id) || main.pool.find(b => b.id == id) || (favs[id] && favs[id].book);
   $('hTitle').textContent = known ? known.title : 'Loading…';
   $('bookBody').innerHTML = loading('Loading book'); setFooter();
   window.scrollTo(0,0);
@@ -801,9 +900,12 @@ $('backBtn').onclick = () => { if (screen !== 'home') goHome(); };
 // ================= EVENTS =================
 document.querySelectorAll('#tabs .tab').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-open],[data-more],[data-retry],[data-sample],[data-fav],[data-desc],[data-reopen],[data-grp],[data-reset],[data-searchall],[data-dl]');
+  const t = e.target.closest('[data-open],[data-more],[data-retry],[data-sample],[data-fav],[data-desc],[data-reopen],[data-grp],[data-reset],[data-searchall],[data-dl],[data-shuffle],[data-moremain],[data-mainretry]');
   if (!t) return;
   if (t.dataset.open) return openBook(t.dataset.open);
+  if (t.hasAttribute('data-shuffle')) return pickMain();
+  if (t.hasAttribute('data-moremain')) return moreMain();
+  if (t.hasAttribute('data-mainretry')) return loadMain();
   if (t.hasAttribute('data-dl') && current) return show('dl');
   if (t.hasAttribute('data-more')) return loadMore();
   if (t.hasAttribute('data-retry')) return reload();
@@ -825,7 +927,7 @@ document.addEventListener('click', e => {
   }
 });
 
-document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.book-row')) { e.preventDefault(); e.target.click(); } });
+document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.book-row,.bk-card')) { e.preventDefault(); e.target.click(); } });
 
 // ================= BOOKCLOTH =================
 // Stack Tracker's pearlescent bookcloth: a fine plain weave lit from the top left, with a faint shimmer,
@@ -905,7 +1007,7 @@ function paintCloth(root){
   (root || document).querySelectorAll('.cloth[data-cloth]').forEach(el => {
     el.style.setProperty('--cloth', el.dataset.cloth);
     const cv = el.querySelector(':scope > canvas'); if (!cv) return;
-    const band = el.classList.contains('stats') ? -1 : el.classList.contains('tab') || el.id === 'backBtn' ? 5 : 10;
+    const band = el.classList.contains('stats') ? -1 : el.classList.contains('bk-card') ? 3 : el.classList.contains('tab') || el.id === 'backBtn' ? 5 : 10;
     CLOTH.draw(cv, el.dataset.cloth, band);
   });
 }
@@ -917,6 +1019,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
 const hb = (location.hash.match(/book=(\d+)/) || [])[1];
 show('home');
 history.replaceState(null, '', location.pathname);
+switchTab('main');
 reload();
 if (hb) openBook(hb);
 })();

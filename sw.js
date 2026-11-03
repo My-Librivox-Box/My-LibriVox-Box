@@ -1,6 +1,6 @@
 // My LibriVox Box service worker: keeps the app's own files so it opens offline.
 // Bump VERSION whenever you upload a new index.html so phones pick up the update.
-const VERSION = 'my-librivox-box-v1';
+const VERSION = 'my-librivox-box-v2';
 const FILES = ['./', './index.html', './app.webmanifest',
                './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
