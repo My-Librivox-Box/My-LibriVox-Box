@@ -261,40 +261,89 @@ function qs(params){
   return Object.entries(params).filter(([,v]) => v !== undefined && v !== '')
     .map(([k,v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');
 }
-function jsonp(url, ms = 12000){
+function jsonp(url, ms = 9000){
   return new Promise((res, rej) => {
     const cb = 'lvcb_' + Date.now() + '_' + Math.floor(Math.random()*1e6);
     const s = document.createElement('script');
     let t;
     const done = () => { clearTimeout(t); try{ delete window[cb]; }catch(e){ window[cb] = undefined; } s.remove(); };
     window[cb] = d => { done(); res(d); };
-    s.onerror = () => { done(); rej(new Error('jsonp')); };
+    s.onerror = () => { done(); const e = new Error('jsonp'); e.http = true; rej(e); };   // the server answered with an error (e.g. 404)
     t = setTimeout(() => { done(); rej(new Error('timeout')); }, ms);
     s.src = url + '&callback=' + cb;
     document.head.appendChild(s);
   });
 }
-async function fetchJSON(url){
-  const r = await fetch(url);
-  const txt = await r.text();
-  if (/could not be found/i.test(txt)) return { books: [] };
-  if (!r.ok) throw new Error('http ' + r.status);
-  return JSON.parse(txt);
+async function fetchJSON(url, ms = 9000){
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+  try {
+    const r = await fetch(url, { signal: ctl.signal });
+    const txt = await r.text();
+    if (/could not be found/i.test(txt)) return { books: [], _notFound: true };
+    if (!r.ok) throw new Error('http ' + r.status);
+    return JSON.parse(txt);
+  } finally { clearTimeout(t); }
 }
-async function api(params){
+
+// ---- saved responses: repeat visits load from the phone instead of the network ----
+const PC = {
+  get(key, maxAge){
+    try { const v = JSON.parse(localStorage.getItem('lvc:' + key) || 'null'); if (v && Date.now() - v.t < maxAge) return v.v; } catch(e){}
+    return null;
+  },
+  set(key, val){
+    const item = JSON.stringify({ t: Date.now(), v: val });
+    for (let tries = 0; tries < 4; tries++){
+      try { localStorage.setItem('lvc:' + key, item); return; }
+      catch(e){ PC.evict(); }   // storage full: drop the oldest saved responses and try again
+    }
+  },
+  evict(){
+    try {
+      const all = [];
+      for (let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if (k && k.startsWith('lvc:')) { let t = 0; try { t = JSON.parse(localStorage.getItem(k)).t; } catch(e){} all.push([t, k]); } }
+      all.sort((a, b) => a[0] - b[0]).slice(0, Math.max(5, Math.ceil(all.length / 3))).forEach(([, k]) => localStorage.removeItem(k));
+    } catch(e){}
+  }
+};
+const HOUR = 3600e3, DAY = 24 * HOUR;
+
+// ---- one way in for every request ----
+// JSONP and a direct fetch race each other; whichever answers first wins, and the winner is remembered per site
+// so it goes first next time. The public proxies are only a last resort.
+let transport = store.get('lv_transport', {});
+async function getData(host, jsonpUrl, jsonUrl, valid){
+  const pref = transport[host];
+  const check = via => d => { if (!d || !(d._notFound || valid(d))) throw new Error('bad data'); return { d, via }; };   // only real data can win
+  const tryJsonp = () => jsonp(jsonpUrl).then(check('jsonp'));
+  const tryFetch = () => fetchJSON(jsonUrl).then(check('fetch'));
+  const win = r => { if (transport[host] !== r.via) { transport[host] = r.via; store.set('lv_transport', transport); } return r.d; };
+  try {
+    if (pref === 'jsonp') return win(await tryJsonp());
+    if (pref === 'fetch') return win(await tryFetch());
+    return win(await Promise.any([tryJsonp(), tryFetch()]));
+  } catch(e) {
+    // the site's known-good route came back with an error page: that's "nothing found", not a network problem
+    const errs = e instanceof AggregateError ? e.errors : [e];
+    if (pref && errs.some(x => x && x.http)) return { books: [], _notFound: true };
+    if (pref) { try { return win(await (pref === 'jsonp' ? tryFetch() : tryJsonp())); } catch(e2){} }
+  }
+  try { return await Promise.any([
+    fetchJSON('https://api.allorigins.win/raw?url=' + encodeURIComponent(jsonUrl), 12000).then(d => check('proxy')(d).d),
+    fetchJSON('https://corsproxy.io/?url=' + encodeURIComponent(jsonUrl), 12000).then(d => check('proxy')(d).d)
+  ]); } catch(e){}
+  return null;
+}
+
+async function api(params, maxAge){
   const key = qs(params);
   if (cache.has(key)) return cache.get(key);
-  const p = (async () => {
-    try { return await jsonp(API + '?' + qs({...params, format:'jsonp'})); } catch(e){}
-    const jsonUrl = API + '?' + qs({...params, format:'json'});
-    try { return await fetchJSON(jsonUrl); } catch(e){}
-    try { return await fetchJSON('https://api.allorigins.win/raw?url=' + encodeURIComponent(jsonUrl)); } catch(e){}
-    try { return await fetchJSON('https://corsproxy.io/?url=' + encodeURIComponent(jsonUrl)); } catch(e){}
-    return { books: [], _failed: true };
-  })();
-  const out = await p;
-  const norm = { books: Array.isArray(out && out.books) ? out.books : (out && out.books ? Object.values(out.books) : []), failed: !!(out && out._failed) };
-  if (!norm.failed) cache.set(key, norm);
+  const ttl = maxAge || (params.id ? 7 * DAY : params.fields ? 7 * DAY : 2 * HOUR);
+  const saved = PC.get('lv|' + key, ttl);
+  if (saved) { cache.set(key, saved); return saved; }
+  const out = await getData('librivox', API + '?' + qs({...params, format:'jsonp'}), API + '?' + qs({...params, format:'json'}), d => 'books' in d);
+  const norm = { books: out && out.books ? (Array.isArray(out.books) ? out.books : Object.values(out.books)) : [], failed: !out };
+  if (!norm.failed) { cache.set(key, norm); PC.set('lv|' + key, norm); }
   return norm;
 }
 
@@ -405,20 +454,17 @@ const PAGE = 100;
 // ===== Internet Archive (popularity sorts) =====
 const IA = 'https://archive.org/advancedsearch.php';
 const IA_FIELDS = ['identifier','title','creator','language','downloads','week','month','avg_rating','num_reviews'];
-async function iaSearch(q, sort, page){
-  const qp = 'q=' + encodeURIComponent(q) + IA_FIELDS.map(f => '&fl[]=' + f).join('') + '&sort[]=' + encodeURIComponent(sort) + '&rows=' + PAGE + '&page=' + page;
+async function iaSearch(q, sort, page, rows = PAGE){
+  const qp = 'q=' + encodeURIComponent(q) + IA_FIELDS.map(f => '&fl[]=' + f).join('') + '&sort[]=' + encodeURIComponent(sort) + '&rows=' + rows + '&page=' + page;
   const key = 'ia|' + qp;
   if (cache.has(key)) return cache.get(key);
-  let out = null;
-  try { out = await jsonp(IA + '?' + qp + '&output=json'); } catch(e){}
-  const jsonUrl = IA + '?' + qp + '&output=json';
-  if (!out) try { out = await fetchJSON(jsonUrl); } catch(e){}
-  if (!out) try { out = await fetchJSON('https://api.allorigins.win/raw?url=' + encodeURIComponent(jsonUrl)); } catch(e){}
-  if (!out) try { out = await fetchJSON('https://corsproxy.io/?url=' + encodeURIComponent(jsonUrl)); } catch(e){}
+  const saved = PC.get(key, 12 * HOUR);
+  if (saved) { cache.set(key, saved); return saved; }
+  const out = await getData('archive', IA + '?' + qp + '&output=json', IA + '?' + qp + '&output=json', d => !!(d.response && d.response.docs));
   const docs = out && out.response && out.response.docs;
   if (!docs) return { books: [], failed: true };
   const norm = { books: docs.map(iaToBook), total: out.response.numFound || 0 };
-  cache.set(key, norm);
+  cache.set(key, norm); PC.set(key, norm);
   return norm;
 }
 const one = v => Array.isArray(v) ? v[0] : v;
@@ -470,7 +516,7 @@ function dividerLabel(){
 async function reload(){
   const token = {};
   reload.token = token;
-  list = { books:[], offset:0, done:false, error:false };
+  list = { books:[], offset:0, done:false, error:false, started:true };
   renderHome(true);
   if (curSort().ia) { list.page = 1; return loadMore(token); }
   if (searchAll){
@@ -531,6 +577,7 @@ function switchTab(t){
   $('sortRow').style.display = t === 'main' ? 'none' : '';
   layout();
   if (t === 'main' && !main.pool.length && !main.loading) loadMain();
+  if (t === 'browse' && !list.started) reload();
   renderHome();
 }
 
@@ -570,16 +617,26 @@ let lenCache = store.get('lv_lens', {});   // IA identifier -> length, once matc
 const clothFor = id => { let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) | 0; return BOOK_CLOTHS[Math.abs(h) % BOOK_CLOTHS.length]; };
 function shuffle(a){ for (let i = a.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
+const dedupe = books => { const seen = new Set(); return books.filter(b => { const k = normT(b.title) + '|' + (b.iaLast || '').toLowerCase(); return !seen.has(k) && seen.add(k); }); };
 async function loadMain(){
-  main.loading = true; main.error = false; renderMain();
-  // the 300 most-downloaded LibriVox books, then a random handful of them
-  const pages = await Promise.all([1, 2, 3].map(p => iaSearch('collection:librivoxaudio', 'downloads desc', p)));
-  // one version per book: LibriVox often has several readings, so keep the most-downloaded (first) of each
-  const seen = new Set();
-  main.pool = pages.flatMap(p => p.books).filter(b => { const k = normT(b.title) + '|' + (b.iaLast || '').toLowerCase(); return !seen.has(k) && seen.add(k); });
-  main.error = !main.pool.length;
-  main.loading = false;
-  pickMain();
+  // 1) last session's pool, straight from the phone
+  const saved = store.get('lv_mainpool', null);
+  if (saved && saved.pool && saved.pool.length) {
+    main.pool = saved.pool; main.loading = false; pickMain();
+    if (Date.now() - saved.t < 12 * HOUR) return;           // fresh enough
+  } else { main.loading = true; main.error = false; renderMain(); }
+  // 2) the top 100 first, so cards appear quickly…
+  const first = await iaSearch('collection:librivoxaudio', 'downloads desc', 1);
+  const shownBefore = main.shown.length;
+  if (first.books.length) {
+    const fresh = dedupe(first.books);
+    if (!shownBefore) { main.pool = fresh; main.loading = false; pickMain(); }
+    // 3) …then the next 200 in the background, widening the pool for Shuffle and More
+    const rest = await Promise.all([2, 3].map(p => iaSearch('collection:librivoxaudio', 'downloads desc', p)));
+    main.pool = dedupe(first.books.concat(...rest.map(r => r.books)));
+    store.set('lv_mainpool', { t: Date.now(), pool: main.pool.map(b => ({ ...b, _lenTried: false })) });
+    renderMain();
+  } else if (!shownBefore) { main.loading = false; main.error = true; renderMain(); }
 }
 function pickMain(){
   main.shown = shuffle(main.pool.slice()).slice(0, MAIN_COUNT);
@@ -1020,7 +1077,6 @@ const hb = (location.hash.match(/book=(\d+)/) || [])[1];
 show('home');
 history.replaceState(null, '', location.pathname);
 switchTab('main');
-reload();
 if (hb) openBook(hb);
 })();
 </script>
