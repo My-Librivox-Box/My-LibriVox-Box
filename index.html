@@ -1315,6 +1315,7 @@ function relayCard(){
     <div class="hp-foot"><span class="dl-line">${relayUrl ? (relayState.ok ? 'Relay working ✓' : relayState.ok === false ? 'Relay not answering' : 'Relay saved') : 'No relay yet'}</span>${relayUrl ? '<button class="dl-btn" data-relaycheck>Check</button>' : ''}</div>
   </div>`;
 }
+const bookZip = (b, fmt) => { const id = iaOf(b.url_iarchive); if (!id) return ''; return `https://archive.org/compress/${id}/formats=${encodeURIComponent(fmt)}&file=/${encodeURIComponent(bookFolderName(b))}.zip`; };
 function renderDownload(){
   const b = current; if (!b) return;
   if (screen !== 'dl') return;
@@ -1337,10 +1338,14 @@ function renderDownload(){
       if (job && (job.status === 'running' || job.status === 'queued')) h += `<div class="card dl-card">${pbar(jobPct(job), job.status)}<div class="dl-foot"><span class="dl-line">${esc(jobLine(job))}</span><button class="dl-btn" data-dlcancel="${esc(job.id)}">Cancel</button></div></div>`;
       else h += clothBtn('data-savebook', '#5b6633', job && job.status === 'done' ? 'Saved ✓ — Save Again' : job && job.status !== 'done' ? 'Resume Saving' : 'Save to Folder', 'list-btn');
       if (job && job.status === 'failed' && job.note) h += `<div class="so-empty" style="padding:2px 8px 10px">${esc(job.note)} — tap Resume to retry them</div>`;
+      if (job && job.blocked && id) h += `<a class="so-opt" href="${esc(bookZip(b, '64Kbps MP3'))}" download><b>Get it as a Zip instead</b><span>No setup · goes to Downloads · unzip for a folder of the MP3s</span></a>`;
     }
   }
   h += divider('Whole Book');
-  if (b.url_zip_file) h += row(https(b.url_zip_file), 'Zip of MP3s', '64kbps · one file · may stall on long books', false);
+  if (id) {
+    h += row(bookZip(b, '64Kbps MP3'), 'Zip of MP3s', 'Goes to Downloads · unzip it for a folder of the MP3s', false);
+    h += row(bookZip(b, '128Kbps MP3'), 'Zip of MP3s · Higher Quality', '128kbps · about twice the size', false);
+  } else if (b.url_zip_file) h += row(https(b.url_zip_file), 'Zip of MP3s', '64kbps · one file', false);
   if (id) h += row(`https://archive.org/download/${id}/${id}_archive.torrent`, 'Torrent', 'Most reliable for big books · needs a torrent app', false);
   if (id) h += row(`https://archive.org/download/${id}`, 'All Files', 'Internet Archive file list · every format', true);
   if (!b.url_zip_file && !id) h += empty('', 'No whole-book download listed for this project.');
