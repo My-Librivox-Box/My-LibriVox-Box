@@ -43,11 +43,45 @@ button:focus-visible,input:focus-visible,.book-row:focus-visible{outline:2px sol
 .hdr-row > *{min-width:0}
 
 /* page tabs: linen cards; the picked one in its bookcloth */
-#tabs .tab{flex:1 1 0;height:34px;border:3px solid #000;border-radius:8px;background:var(--hdr-cell);color:var(--ink);
+#tabs .tab,.segtabs .tab{flex:1 1 0;height:34px;border:3px solid #000;border-radius:8px;background:var(--hdr-cell);color:var(--ink);
   font:700 min(.74rem,2.95vw)/1 var(--sans);text-transform:uppercase;letter-spacing:.3px}
-#tabs .tab > canvas{display:none}
-#tabs .tab.active{color:#fff}
-#tabs .tab.active > canvas{display:block}
+#tabs .tab > canvas,.segtabs .tab > canvas{display:none}
+#tabs .tab.active,.segtabs .tab.active{color:#fff}
+#tabs .tab.active > canvas,.segtabs .tab.active > canvas{display:block}
+.segtabs{display:flex;gap:4px;margin:4px 0}
+.reader-chips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}
+/* Narrators: a card that opens into a dropdown of contributor cards (Stack Tracker's dropdown) */
+.dd-card{height:45px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;margin-bottom:4px;cursor:pointer;
+  background:var(--panel);border:3px solid #000;border-radius:8px}
+.dd-card:active{background:var(--hdr-cell)}
+.dd-card.open{border-radius:8px 8px 0 0;margin-bottom:0}
+.dd-lbl{font:700 .78rem var(--sans);letter-spacing:.3px;text-transform:uppercase;color:var(--ink)}
+.dd-arrow{font:700 .8rem var(--sans);color:var(--muted)}
+.dd-cur{display:flex;align-items:center;gap:8px;min-width:0;font:700 .66rem var(--sans);letter-spacing:.3px;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.dd-panel .ver-opt{margin-bottom:4px}
+.sec-row.failed .br-pages{color:var(--oxblood)}
+.dl-card{padding:8px 8px 6px}
+.dl-top{display:flex;cursor:pointer;margin-bottom:6px}
+.pbar{height:14px;border:2.5px solid #000;border-radius:7px;background:var(--hdr-cell);overflow:hidden}
+.pbar > div{height:100%;background:var(--olive);border-right:2px solid #000;transition:width .15s linear}
+.pbar > div[style^="width:0"]{border-right:none}
+.pbar.done > div{background:var(--teal)}
+.pbar.failed > div,.pbar.cancelled > div{background:var(--oxblood)}
+.pbar.queued > div{background:var(--muted)}
+.dl-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;min-height:28px}
+.dl-line{font:700 .62rem var(--sans);letter-spacing:.3px;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dl-btn{flex:none;height:28px;padding:0 12px;border:2.5px solid #000;border-radius:6px;background:var(--panel);font:700 .62rem var(--sans);letter-spacing:.3px;text-transform:uppercase;color:var(--ink)}
+.dl-btn:active{background:var(--hdr-cell)}
+.dd-panel{margin-bottom:4px;padding:4px 4px 0;background:var(--hdr-cell);border:3px solid #000;border-top:none;border-radius:0 0 8px 8px}
+.dd-panel .nr-row{height:45px;padding:0 8px 0 12px}
+.nr-go{flex:none;font:700 1.2rem var(--serif);color:var(--muted)}
+.reader-chip{height:34px;max-width:100%;padding:0 10px;display:flex;align-items:center;gap:6px;border:3px solid #000;border-radius:8px;background:var(--panel);
+  font:700 .72rem var(--sans);color:var(--ink);cursor:pointer}
+.reader-chip .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.reader-chip .ct{flex:none;font:400 .6rem var(--sans);color:var(--muted);text-transform:uppercase}
+.reader-chip:active{background:var(--hdr-cell)}
+.rd-link{text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.reader-chip::after{content:'›';font:700 1rem var(--serif);color:var(--muted)}
 
 /* filter / sort card, with search */
 #sortbar{position:relative;flex:1;height:30px;border:3px solid #000;border-radius:8px;background:var(--panel);overflow:hidden;
@@ -120,15 +154,26 @@ input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:4px;bac
   font:700 1.1rem var(--serif);color:var(--muted);overflow:hidden}
 .cover img{width:100%;height:100%;object-fit:cover;display:block}
 .br-main{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;line-height:1.15}
-.book-row.saved .br-main{padding-left:16px}
 .br-title{font:600 .9rem var(--serif);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .br-author{font:400 .66rem var(--sans);color:rgba(43,38,32,.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .br-prog{flex:none;text-align:right;line-height:1.2;max-width:42%}
 .br-pages{font:600 .82rem var(--serif);color:var(--ink);white-space:nowrap}
 .br-pct{font:400 .62rem var(--sans);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:uppercase}
 /* saved: a ribbon bookmark hanging over the top edge */
-.book-row.saved::after{content:'';position:absolute;top:-3px;left:52px;width:10px;height:22px;background:var(--oxblood);
-  border:2px solid #000;border-top:none;clip-path:polygon(0 0,100% 0,100% 100%,50% 75%,0 100%)}
+.cover,.bk-cover{position:relative}
+/* saved: a ribbon bookmark hanging from the top of the cover, outlined all round, notch included */
+.kind{position:absolute;right:2px;bottom:1px;width:18px;height:18px;z-index:2;pointer-events:none;overflow:visible}
+/* no box: the figure itself in cream, outlined in black so it reads on any cover */
+.kind .o *{fill:#000;stroke:#000;stroke-width:3.2;stroke-linejoin:round}
+.kind .f *{fill:#efeadf}
+.kind .o .ln{fill:none;stroke:#000;stroke-width:5.4;stroke-linecap:round}
+.kind .f .ln{fill:none;stroke:#efeadf;stroke-width:2.2;stroke-linecap:round}
+.bk-cover .kind{width:22px;height:22px;right:2px;bottom:1px}
+.hero .kind{width:32px;height:32px;right:5px;bottom:3px}
+.ribbon{position:absolute;top:-2px;right:5px;width:11px;height:21px;z-index:2;pointer-events:none;filter:drop-shadow(0 1px 0 rgba(0,0,0,.25))}
+.ribbon polygon{fill:var(--oxblood);stroke:#000;stroke-width:2;stroke-linejoin:miter}
+.bk-cover .ribbon{width:13px;height:25px;right:6px}
+.hero .ribbon{width:18px;height:34px;right:10px}
 
 /* ===== small parts ===== */
 .hint{width:100%;height:36px;margin-bottom:4px;border:3px solid #000;border-radius:8px;background:var(--hdr-cell);
@@ -190,8 +235,7 @@ input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:4px;bac
   text-shadow:0 1px 0 rgba(0,0,0,.35)}
 .bk-author{margin-top:2px;width:100%;font:400 min(.52rem,2.2vw)/1.15 var(--sans);opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bk-len{margin-top:auto;padding-top:3px;font:700 min(.58rem,2.45vw)/1 var(--serif);letter-spacing:.03em;opacity:.95}
-.bk-card.saved::after{content:'';position:absolute;top:-3px;right:8px;width:9px;height:18px;background:var(--oxblood);border:2px solid #000;border-top:none;
-  clip-path:polygon(0 0,100% 0,100% 100%,50% 75%,0 100%)}
+
 .btn-row{display:flex;gap:4px;margin-bottom:4px}
 .toast{position:fixed;left:50%;top:calc(var(--header-h,90px) + 10px);transform:translateX(-50%);background:var(--ink);border:3px solid #000;border-radius:8px;
   color:#fff;padding:8px 14px;font:700 .75rem var(--sans);text-transform:uppercase;letter-spacing:.3px;z-index:20;opacity:0;pointer-events:none;transition:opacity .2s}
@@ -206,6 +250,7 @@ input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:4px;bac
     <button class="tab cloth active" data-tab="main" data-cloth="#7a2f2b"><canvas aria-hidden="true"></canvas><span class="lbl">Main</span></button>
     <button class="tab cloth" data-tab="browse" data-cloth="#303d66"><canvas aria-hidden="true"></canvas><span class="lbl">Browse</span></button>
     <button class="tab cloth" data-tab="saved" data-cloth="#2b5752"><canvas aria-hidden="true"></canvas><span class="lbl">Saved</span></button>
+    <button class="tab cloth" data-tab="downloads" data-cloth="#5b6633"><canvas aria-hidden="true"></canvas><span class="lbl">Downloads</span></button>
   </div>
   <div class="hdr-row" id="sortRow">
     <div id="sortbar">
@@ -227,6 +272,7 @@ input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:4px;bac
 <main class="screen" id="sortScreen"><div id="sortBody"></div></main>
 <main class="screen" id="bookScreen"><div id="bookBody"></div></main>
 <main class="screen" id="dlScreen"><div id="dlBody"></div></main>
+<main class="screen" id="readerScreen"><div id="readerBody"></div></main>
 
 <!-- frozen footer: the sample strip, and the book's actions -->
 <footer id="app-footer">
@@ -247,6 +293,17 @@ input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:4px;bac
 
 (() => {
 // ================= STORAGE =================
+// when an update changes what the app saves, drop the old saved copies so nothing stale shows
+// (saved books, matches and download history are kept)
+const DATA_VERSION = 6;
+try {
+  if (+localStorage.getItem('lv_dataver') !== DATA_VERSION) {
+    const drop = [];
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && (k.startsWith('lvc:') || k === 'lv_mainpool')) drop.push(k); }
+    drop.forEach(k => localStorage.removeItem(k));
+    localStorage.setItem('lv_dataver', String(DATA_VERSION));
+  }
+} catch(e) {}
 const store = {
   get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
   set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
@@ -360,10 +417,37 @@ const toSecs = t => { if (!t) return 0; if (/^\d+$/.test(t)) return +t; return S
 const initial = t => (String(t||'?').replace(/^(the|a|an)\s+/i,'').trim()[0] || '?').toUpperCase();
 function slim(b){ return { id:b.id, title:b.title, authors:b.authors, totaltime:b.totaltime, totaltimesecs:b.totaltimesecs, language:b.language, num_sections:b.num_sections, coverart_thumbnail:b.coverart_thumbnail, coverart_jpg:b.coverart_jpg }; }
 function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 1600); }
+// saved? popular cards use the Internet Archive id, so also check the LibriVox project it's matched to
+const isSaved = b => !!(favs[b.id] || (b.ia && iaMap[b.ia] && favs[iaMap[b.ia]]));
+// solo/group per book: LibriVox lists don't say, so it's worked out from a book's versions (on its page, or in the
+// background for Main's cards) and remembered by title + author
+let kindCache = store.get('lv_kinds', {});
+const kindsFor = b => b._kinds || kindCache[workKey(b)];
+function rememberKinds(key, kinds){
+  const k = [...new Set(kinds)].sort();
+  if (!key || !k.length || String(kindCache[key]) === String(k)) return;
+  kindCache[key] = k; store.set('lv_kinds', kindCache);
+}
+const kindOf = b => { const ks = kindsFor(b); if (ks && ks.length) return ks.length > 1 ? 'both' : ks[0]; return kindOfOne(b); };
+const kindOfOne = b => b._kind || (b.sections && b.sections.length ? (new Set(b.sections.flatMap(s => (s.readers || []).map(r => r.reader_id || r.display_name))).size > 1 ? 'group' : 'solo') : '');
+// each figure is drawn twice: a black silhouette a little larger behind, then the cream figure on top,
+// so overlapping people share one clean outline
+// each figure is drawn twice: a black silhouette a little larger behind, then the cream figure on top,
+// so overlapping people share one clean outline
+// set 14, Links: one ring = solo, three linked rings = group, two linked rings = both
+const KIND_DEF = {
+  solo:  { vb: '0 0 24 24', label: 'Solo', sh: '<path class="ln" d="M12 5.5a6.5 6.5 0 1 1 0 13a6.5 6.5 0 1 1 0-13"/>' },
+  group: { vb: '0 0 24 24', label: 'Group', sh: '<path class="ln" d="M12 3.4a4.4 4.4 0 1 1 0 8.8a4.4 4.4 0 1 1 0-8.8M7.6 11a4.4 4.4 0 1 1 0 8.8a4.4 4.4 0 1 1 0-8.8M16.4 11a4.4 4.4 0 1 1 0 8.8a4.4 4.4 0 1 1 0-8.8"/>' },
+  both:  { vb: '0 0 24 24', label: 'Solo and group versions', sh: '<path class="ln" d="M8.6 7a5 5 0 1 1 0 10a5 5 0 1 1 0-10M15.4 7a5 5 0 1 1 0 10a5 5 0 1 1 0-10"/>' }
+};
+const KIND_ICON = Object.fromEntries(Object.entries(KIND_DEF).map(([k, d]) =>
+  [k, `<svg class="kind kind-${k}" viewBox="${d.vb}" aria-label="${d.label}"><title>${d.label}</title><g class="o">${d.sh}</g><g class="f">${d.sh}</g></svg>`]));
+const kindBadge = b => KIND_ICON[kindOf(b)] || '';
+const RIBBON = '<svg class="ribbon" viewBox="0 0 12 23" preserveAspectRatio="none" aria-label="Saved"><polygon points="1,-2 11,-2 11,21.5 6,16.5 1,21.5"/></svg>';
 function coverHTML(b, big){
   const src = https(big ? (b.coverart_jpg || b.coverart_thumbnail) : (b.coverart_thumbnail || b.coverart_jpg));
   const ini = esc(initial(b.title));
-  return `<div class="cover">${src ? `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.parentNode.textContent='${ini}'">` : ini}</div>`;
+  return `<div class="cover">${src ? `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.replaceWith('${ini}')">` : ini}${isSaved(b) ? RIBBON : ''}${kindBadge(b)}</div>`;
 }
 const loading = txt => `<div class="so-empty"><span class="spin"></span>${esc(txt||'Loading')}…</div>`;
 const empty = (ic, txt) => `<div class="so-empty">${esc(txt)}</div>`;
@@ -561,6 +645,7 @@ function renderHome(isLoading){
   updateBar();
   const body = $('homeBody');
   if (tab === 'main') return renderMain();
+  if (tab === 'downloads') return renderDownloads();
   if (tab === 'saved'){
     const all = Object.values(favs).sort((a,b) => b.added - a.added).map(f => f.book);
     const shown = view(all, false);
@@ -585,7 +670,7 @@ function switchTab(t){
   tab = t;
   document.querySelectorAll('#tabs .tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
   paintCloth($('tabs'));
-  $('sortRow').style.display = t === 'main' ? 'none' : '';
+  $('sortRow').style.display = t === 'main' || t === 'downloads' ? 'none' : '';
   layout();
   if (t === 'main' && !main.pool.length && !main.loading) loadMain();
   if (t === 'browse' && !list.started) reload();
@@ -653,14 +738,14 @@ function pickMain(){
   main.shown = shuffle(main.pool.slice()).slice(0, MAIN_COUNT);
   main.shown.forEach(b => { if (lenCache[b.ia]) b.totaltime = lenCache[b.ia]; });
   renderMain(); window.scrollTo(0, 0);
-  fillLengths(main.shown);
+  fillLengths(main.shown); fillKinds(main.shown);
 }
 function moreMain(){
   const have = new Set(main.shown.map(b => b.id));
   const extra = shuffle(main.pool.filter(b => !have.has(b.id))).slice(0, MAIN_COUNT);
   extra.forEach(b => { if (lenCache[b.ia]) b.totaltime = lenCache[b.ia]; });
   main.shown = main.shown.concat(extra);
-  renderMain(); fillLengths(extra);
+  renderMain(); fillLengths(extra); fillKinds(extra);
 }
 
 function bookTile(b){
@@ -668,7 +753,7 @@ function bookTile(b){
   const ini = esc(initial(b.title));
   return `<div class="bk-card cloth ${favs[b.id] ? 'saved' : ''}" data-cloth="${clothFor(b.id)}" data-open="${esc(b.id)}" role="button" tabindex="0">
     <canvas aria-hidden="true"></canvas>
-    <div class="bk-cover">${src ? `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.parentNode.textContent='${ini}'">` : ini}</div>
+    <div class="bk-cover">${src ? `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.replaceWith('${ini}')">` : ini}${isSaved(b) ? RIBBON : ''}${kindBadge(b)}</div>
     <div class="bk-title">${esc(b.title)}</div>
     <div class="bk-author">${esc(authors(b))}</div>
     <div class="bk-len" data-len="${esc(b.ia || b.id)}">${esc(b.totaltime || (b._lenTried ? '—' : '…'))}</div>
@@ -687,6 +772,26 @@ function renderMain(){
 
 // lengths: the Internet Archive doesn't list them, so each pick is matched to its LibriVox project
 // (by author, checking the archive link) a few at a time; matches are remembered for next time
+let kindQueue = [], kindBusy = 0, kindRedraw = 0;
+const VERSION_FIELDS = '{id,title,url_iarchive,authors,totaltime,totaltimesecs,language,sections}';
+function fillKinds(books){
+  books.forEach(b => { if (!kindsFor(b) && !b._kindTried) { b._kindTried = true; kindQueue.push(b); } });
+  while (kindBusy < 2 && kindQueue.length) runKind(kindQueue.shift());
+}
+async function runKind(b){
+  kindBusy++;
+  try {
+    const key = workKey(b), title = baseTitle(b.title);
+    if (title) {
+      const res = await api({ title, extended:1, limit:50, fields: VERSION_FIELDS });
+      const vs = res.books.filter(v => workKey(v) === key && v.sections);
+      rememberKinds(key, vs.map(v => { const t = readerInfo(v).type; return t === 'Solo' ? 'solo' : t ? 'group' : ''; }).filter(Boolean));
+      if (kindsFor(b) && tab === 'main' && screen === 'home') { clearTimeout(kindRedraw); kindRedraw = setTimeout(() => { const y = window.scrollY; renderMain(); window.scrollTo(0, y); }, 250); }
+    }
+  } catch(e) {}
+  kindBusy--;
+  if (kindQueue.length) runKind(kindQueue.shift());
+}
 let lenQueue = [], lenBusy = 0;
 function fillLengths(books){
   books.forEach(b => { if (!b.totaltime && b.ia && !b._lenTried) lenQueue.push(b); });
@@ -740,6 +845,8 @@ function pickOption(grp, val){
 
 // ================= BOOK =================
 let current = null;
+let narrOpen = false;   // the Narrators dropdown on the book page
+let verOpen = false;    // the Versions dropdown
 
 // Internet Archive item -> LibriVox project (matched by url_iarchive, then by title)
 let iaMap = store.get('lv_iamap', {});   // remembered matches: IA identifier -> LibriVox id
@@ -794,6 +901,7 @@ async function resolveIA(ident, title, last){
 }
 
 async function openBook(id, push = true, preferTop = false){
+  if (push) { narrOpen = false; verOpen = false; }   // a new book starts closed; coming Back keeps it as you left it
   show('book', push ? id : null);
   const known = list.books.find(b => b.id == id) || main.pool.find(b => b.id == id) || (favs[id] && favs[id].book);
   $('hTitle').textContent = known ? known.title : 'Loading…';
@@ -834,7 +942,7 @@ async function loadVersions(b, preferTop){
   if (versions.key === key && versions.list.length) { renderVersions(); return; }
   versions.key = key; versions.list = []; versions.loading = true; renderVersions();
   const title = baseTitle(b.title);
-  const F = '{id,title,url_iarchive,authors,totaltime,totaltimesecs,language,sections}';
+  const F = VERSION_FIELDS;
   let res = await api({ title, extended:1, limit:50, fields: F });
   if (res.failed || (res.books.length && !('url_iarchive' in res.books[0]))) res = await api({ title, extended:1, limit:50 });
   if (versions.key !== key) return;
@@ -850,30 +958,37 @@ async function loadVersions(b, preferTop){
   list.sort((x, y) => (y._dl || 0) - (x._dl || 0) || (+x.id) - (+y.id));
   if (versions.key !== key) return;
   versions.list = list; versions.loading = false;
+  rememberKinds(key, list.map(v => readerInfo(v).type === 'Solo' ? 'solo' : readerInfo(v).type ? 'group' : '').filter(Boolean));
   // opened from a list: switch to the reading most people choose
   if (preferTop && list.length > 1 && list[0].id != b.id && current && current.id == b.id && !(sample && sample.book.id == b.id)) { switchVersion(list[0].id); return; }
   renderVersions();
 }
 function renderVersions(){
   const el = $('versionsBox'); if (!el || !current) return;
-  if (versions.loading) { el.innerHTML = divider('Versions') + loading('Finding versions'); return; }
+  if (versions.loading) { el.innerHTML = `<div class="dd-card"><span class="dd-lbl">Versions</span><span class="dd-cur"><span class="spin" style="width:14px;height:14px;margin:0"></span></span></div>`; return; }
   if (versions.list.length < 2) { el.innerHTML = ''; return; }
   const n = x => Number(x || 0).toLocaleString();
-  el.innerHTML = divider(versions.list.length + ' Versions') + versions.list.map((v, i) => {
+  const cur = versions.list.find(v => v.id == current.id);
+  // one card that says Versions (with the reading you're on); tap it to drop down a card per version
+  let h = `<div class="dd-card ${verOpen ? 'open' : ''}" data-veropen role="button" tabindex="0" aria-expanded="${verOpen}">
+    <span class="dd-lbl">Versions</span><span class="dd-cur">${esc(cur ? verLabel(cur.title) : '')}<span class="dd-arrow">${verOpen ? '▴' : '▾'}</span></span></div>`;
+  if (verOpen) h += `<div class="dd-panel">${versions.list.map((v, i) => {
     const r = readerInfo(v), on = v.id == current.id;
     const lbl = verLabel(v.title), head = [lbl, lbl.toLowerCase().includes(r.type.toLowerCase()) ? '' : r.type, r.who].filter(Boolean).join(' · ');
     const sub = [v.totaltime, v.language, v._dl ? n(v._dl) + ' downloads' : '', i === 0 && v._dl ? 'most popular' : ''].filter(Boolean).join(' · ');
     return `<button class="so-opt ver-opt ${on ? 'on' : ''}" data-ver="${esc(v.id)}"><b>${esc(head)}</b><span>${esc(sub)}</span></button>`;
-  }).join('');
+  }).join('')}</div>`;
+  el.innerHTML = h;
 }
 async function switchVersion(id){
-  if (current && current.id == id) return;
+  verOpen = false;
+  if (current && current.id == id) { renderVersions(); return; }
   const y = window.scrollY;
   const b = (await api({ id, extended:1, coverart:1 })).books[0];
   if (!b) { toast('Couldn\u2019t load that version'); return; }
   current = b;
   b._secs = (b.sections || []).slice().sort((x,y) => (+x.section_number) - (+y.section_number));
-  history.replaceState({ book: id }, '', '#book=' + id);
+  hreplace({ book: id }, '', '#book=' + id);
   renderBook(); renderVersions();
   window.scrollTo(0, y);
 }
@@ -895,6 +1010,18 @@ function renderBook(){
     <div class="stat"><b>${esc(secs.length || b.num_sections || '—')}</b><small>Sections</small></div>
     <div class="stat"><b>${esc((b.language || '—').slice(0,12))}</b><small>Language</small></div></div>`;
   h += `<div id="versionsBox"></div>`;
+  // narrators: everyone reading this version, most sections first; tap one for their other recordings
+  const rd = new Map();
+  secs.forEach(sc => (sc.readers || []).forEach(r => { if (!r.display_name) return; const k = r.reader_id || r.display_name; const e = rd.get(k) || { id: r.reader_id, name: r.display_name, n: 0 }; e.n++; rd.set(k, e); }));
+  const rlist = [...rd.values()].sort((x, y) => y.n - x.n);
+  if (rlist.length) {
+    // one card that simply says Narrators; tap it to drop down a card per contributor
+    h += `<div class="dd-card ${narrOpen ? 'open' : ''}" data-narr role="button" tabindex="0" aria-expanded="${narrOpen}">
+      <span class="dd-lbl">${rlist.length === 1 ? 'Narrator' : 'Narrators'}</span><span class="dd-arrow">${narrOpen ? '▴' : '▾'}</span></div>`;
+    if (narrOpen) h += `<div class="dd-panel">${rlist.map(r => `<div class="book-row nr-row" ${r.id ? `data-reader="${esc(r.id)}"` : ''} data-rname="${esc(r.name)}" role="button" tabindex="0">
+        <div class="br-main"><div class="br-title">${esc(r.name)}</div><div class="br-author">${r.n} ${r.n === 1 ? 'section' : 'sections'}${r.id ? '' : ' · no LibriVox page'}</div></div>
+        <div class="nr-go">›</div></div>`).join('')}</div>`;
+  }
   if (genres.length) h += `<div class="chips">${genres.map(g => `<span class="chip">${esc(g)}</span>`).join('')}</div>`;
   if (desc) h += `<div class="card desc" data-desc><div class="txt">${esc(desc)}</div><div class="more">More ▾</div></div>`;
   h += divider('Sections');
@@ -904,7 +1031,7 @@ function renderBook(){
     const on = here && sample.sec === i;
     return `<div class="book-row sec-row ${on ? 'now' : ''}" data-sample="${i}" role="button" tabindex="0">
       <div class="sec-n">${on ? (sampling ? '❚❚' : '▶') : i + 1}</div>
-      <div class="br-main"><div class="br-title">${esc(s.title || 'Section ' + (i+1))}</div>${readers ? `<div class="br-author">${esc(readers)}</div>` : ''}</div>
+      <div class="br-main"><div class="br-title">${esc(s.title || 'Section ' + (i+1))}</div>${readers ? `<div class="br-author">${(s.readers || []).filter(r => r.display_name).map(r => r.reader_id ? `<span class="rd-link" data-reader="${esc(r.reader_id)}" data-rname="${esc(r.display_name)}">${esc(r.display_name)}</span>` : esc(r.display_name)).join(', ')}</div>` : ''}</div>
       <div class="br-prog"><div class="br-pages">${esc(fmt(s.playtime))}</div></div></div>`;
   }).join('');
   $('bookBody').innerHTML = h;
@@ -982,11 +1109,168 @@ $('pMid').addEventListener('click', e => { if (e.target.id !== 'pSeek' && sample
 // ================= DOWNLOAD PAGE =================
 // whole-book zips from the Internet Archive can stall on big books, so every route is offered:
 // the zip, a torrent (best for large books), the item's file list, and each section's MP3 on its own
+// ===== Save to Folder: you pick a folder once; each book goes into its own folder inside it =====
+const canFolder = 'showDirectoryPicker' in window;
+const idb = (() => {
+  let dbp = null;
+  const db = () => dbp || (dbp = new Promise((res, rej) => { const r = indexedDB.open('lvbox', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }));
+  const tx = async (mode, fn) => { const d = await db(); return new Promise((res, rej) => { const t = d.transaction('kv', mode), q = fn(t.objectStore('kv')); t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error); }); };
+  return { get: k => tx('readonly', st => st.get(k)), set: (k, v) => tx('readwrite', st => st.put(v, k)) };
+})();
+// saveTo.jobs: every book saved this session, newest first; one downloads at a time, the rest wait
+// job: { id, book, folder, n, state: ['wait'|'busy'|'done'|'skip'|'fail'], file: { got, total }, status: 'queued'|'running'|'done'|'failed'|'cancelled', note }
+const saveTo = { root: null, loaded: false, jobs: [], active: null };
+let dlHistory = store.get('lv_dlhist', []);   // finished downloads, kept between visits
+async function loadRoot(){ if (saveTo.loaded) return; saveTo.loaded = true; try { saveTo.root = await idb.get('root') || null; } catch(e) {} refreshDL(); }
+async function chooseFolder(){
+  try {
+    const h = await window.showDirectoryPicker({ id: 'librivox-box', mode: 'readwrite', startIn: 'music' });
+    saveTo.root = h; try { await idb.set('root', h); } catch(e) {}
+    toast('Saving to ' + h.name); renderDownload();
+  } catch(e) {
+    if (e && e.name === 'AbortError') return;                       // you closed the picker
+    toast(e && e.name === 'SecurityError' ? 'This page can’t open folders here — open the app in Chrome' : 'Couldn’t open that folder');
+  }
+}
+async function allowed(h){
+  const o = { mode: 'readwrite' };
+  if (await h.queryPermission(o) === 'granted') return true;
+  return await h.requestPermission(o) === 'granted';                // the phone asks again after the app was closed
+}
+const clean = t => String(t || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || 'Untitled';
+const bookFolderName = b => { const v = verLabel(b.title); return clean(`${baseTitle(b.title) || b.title} - ${authors(b)}${v !== 'Version 1' || (versions.list.length > 1) ? ` (${v})` : ''}`); };
+async function exists(dir, name){ try { const f = await (await dir.getFileHandle(name)).getFile(); return f.size > 0; } catch(e) { return false; } }
+// streams a file into the folder, reporting bytes as they arrive (so the bar moves within each section)
+async function writeUrl(dir, name, url, onBytes = () => {}, isCancelled = () => false){
+  const r = await fetch(url); if (!r.ok) throw new Error('http ' + r.status);
+  const total = +r.headers.get('content-length') || 0;
+  const fh = await dir.getFileHandle(name + '.part', { create: true }), w = await fh.createWritable();
+  let got = 0;
+  try {
+    const rd = r.body.getReader();
+    for (;;) {
+      const { done, value } = await rd.read(); if (done) break;
+      if (isCancelled()) throw new Error('cancelled');
+      await w.write(value); got += value.length; onBytes(got, total || got);
+    }
+    await w.close();
+  } catch(e) { try { await w.abort(); } catch(_) {} try { await dir.removeEntry(name + '.part'); } catch(_) {} throw e; }
+  // finished: give it its real name (a half-saved file never looks complete)
+  if (fh.move) await fh.move(name); else { const f = await fh.getFile(); const w2 = await (await dir.getFileHandle(name, { create: true })).createWritable(); await w2.write(f); await w2.close(); await dir.removeEntry(name + '.part'); }
+}
+async function writeText(dir, name, text){ const w = await (await dir.getFileHandle(name, { create: true })).createWritable(); await w.write(text); await w.close(); }
+async function saveBook(){
+  const b = current; if (!b || !saveTo.root) return;
+  if (saveTo.jobs.some(j => j.id == b.id && (j.status === 'running' || j.status === 'queued'))) { toast('Already downloading'); return; }
+  if (!(await allowed(saveTo.root))) { toast('Folder permission wasn’t given'); return; }
+  const secs = b._secs || [];
+  const job = { id: b.id, book: { ...slim(b), _secs: secs, url_librivox: b.url_librivox, description: b.description, coverart_jpg: b.coverart_jpg, title: b.title },
+    folder: bookFolderName(b), n: secs.length, state: secs.map(() => 'wait'), file: { got: 0, total: 0 }, status: 'queued', note: '' };
+  saveTo.jobs = [job, ...saveTo.jobs.filter(j => j.id != b.id)];
+  toast(saveTo.active ? 'Queued — see Downloads' : 'Downloading — see Downloads');
+  refreshDL(); pump();
+}
+function pump(){
+  if (saveTo.active) return;
+  const next = [...saveTo.jobs].reverse().find(j => j.status === 'queued');   // oldest waiting first
+  if (next) runJob(next);
+}
+async function runJob(job){
+  saveTo.active = job; job.status = 'running'; refreshDL();
+  const b = job.book, secs = b._secs;
+  const cancelled = () => job.status === 'cancelled';
+  try {
+    const dir = await saveTo.root.getDirectoryHandle(job.folder, { create: true });
+    const readers = [...new Set(secs.flatMap(s => (s.readers || []).map(r => r.display_name)))].join(', ');
+    await writeText(dir, 'info.txt', [baseTitle(b.title) || b.title, 'by ' + authors(b), verLabel(b.title), 'Read by ' + readers, 'Length ' + (b.totaltime || ''),
+      b.url_librivox ? 'LibriVox: ' + b.url_librivox : '', '', stripHTML(b.description)].join('\n'));
+    const cov = b.coverart_jpg || b.coverart_thumbnail;
+    if (cov) { const ext = cov.startsWith('data:image/svg') ? 'svg' : 'jpg'; if (!(await exists(dir, 'cover.' + ext))) try { await writeUrl(dir, 'cover.' + ext, https(cov)); } catch(e) {} }
+    const pad = Math.max(2, String(secs.length).length);
+    for (let i = 0; i < secs.length; i++){
+      if (cancelled()) break;
+      const s = secs[i], url = https(s.listen_url), ext = /\.mp3(\?|$)/i.test(url) ? 'mp3' : 'wav';
+      const name = clean(`${String(i + 1).padStart(pad, '0')} - ${s.title || 'Section ' + (i + 1)}`) + '.' + ext;
+      if (await exists(dir, name)) { job.state[i] = 'skip'; refreshDL(); continue; }
+      job.state[i] = 'busy'; job.file = { got: 0, total: 0 }; refreshDL();
+      try { await writeUrl(dir, name, url, (got, total) => { job.file = { got, total }; refreshDL(); }, cancelled); job.state[i] = 'done'; }
+      catch(e) { job.state[i] = cancelled() ? 'wait' : 'fail'; }
+      job.file = { got: 0, total: 0 }; refreshDL();
+    }
+    const failed = job.state.filter(x => x === 'fail').length;
+    if (!cancelled()) { job.status = failed ? 'failed' : 'done'; job.note = failed ? `${failed} section${failed > 1 ? 's' : ''} didn’t save` : ''; }
+  } catch(e) { job.status = 'failed'; job.note = 'Couldn’t write to that folder'; }
+  if (job.status === 'done') {
+    dlHistory = [{ id: job.id, title: baseTitle(b.title) || b.title, author: authors(b), folder: job.folder, root: saveTo.root.name, n: job.n, at: Date.now() },
+      ...dlHistory.filter(h => h.id != job.id)].slice(0, 40);
+    store.set('lv_dlhist', dlHistory);
+  }
+  saveTo.active = null; refreshDL(); pump();
+}
+const jobPct = j => { const whole = j.state.filter(x => x === 'done' || x === 'skip').length, part = j.file.total ? j.file.got / j.file.total : 0; return j.n ? Math.min(100, (whole + (j.status === 'running' ? part : 0)) / j.n * 100) : 0; };
+function jobLine(j){
+  const whole = j.state.filter(x => x === 'done' || x === 'skip').length, pct = Math.floor(jobPct(j));
+  if (j.status === 'queued') return 'Waiting · ' + whole + ' of ' + j.n + ' sections';
+  if (j.status === 'running') { const cur = j.state.indexOf('busy'); return (cur >= 0 ? `Section ${cur + 1} of ${j.n}` : 'Starting') + ' · ' + pct + '%'; }
+  if (j.status === 'done') return 'Saved ✓ · ' + j.n + ' sections';
+  if (j.status === 'cancelled') return 'Stopped · ' + whole + ' of ' + j.n + ' saved';
+  return (j.note || 'Some sections didn’t save') + ' · ' + whole + ' of ' + j.n + ' saved';
+}
+const pbar = (pct, cls = '') => `<div class="pbar ${cls}"><div style="width:${pct.toFixed(1)}%"></div></div>`;
+// redraws whatever is showing download progress, at most once a frame
+let dlFrame = 0;
+function refreshDL(){
+  if (dlFrame) return;
+  dlFrame = requestAnimationFrame(() => {
+    dlFrame = 0;
+    if (screen === 'dl') renderDownload();
+    if (screen === 'home' && tab === 'downloads') renderDownloads();
+  });
+}
+function renderDownloads(){
+  if (tab !== 'downloads') return;
+  loadRoot();
+  const body = $('homeBody');
+  let h = divider('Downloads');
+  const live = saveTo.jobs;
+  if (!live.length && !dlHistory.length) h += empty('', 'Nothing downloaded yet. Open a book, tap Get, then Save to Folder.');
+  h += live.map(j => `<div class="card dl-card">
+    <div class="dl-top" data-open="${esc(j.id)}" role="button" tabindex="0"><div class="br-main"><div class="br-title">${esc(baseTitle(j.book.title) || j.book.title)}</div>
+      <div class="br-author">${esc(saveTo.root ? saveTo.root.name + ' › ' + j.folder : j.folder)}</div></div></div>
+    ${pbar(jobPct(j), j.status)}
+    <div class="dl-foot"><span class="dl-line">${esc(jobLine(j))}</span>
+      ${j.status === 'running' || j.status === 'queued' ? `<button class="dl-btn" data-dlcancel="${esc(j.id)}">Cancel</button>`
+        : j.status === 'failed' || j.status === 'cancelled' ? `<button class="dl-btn" data-dlretry="${esc(j.id)}">Retry</button>` : ''}</div></div>`).join('');
+  const earlier = dlHistory.filter(hh => !live.some(j => j.id == hh.id));
+  if (earlier.length) {
+    h += divider('Earlier');
+    h += earlier.map(hh => `<div class="book-row" data-open="${esc(hh.id)}" role="button" tabindex="0"><div class="br-main" style="padding-left:8px"><div class="br-title">${esc(hh.title)}</div>
+      <div class="br-author">${esc(hh.root + ' › ' + hh.folder)}</div></div><div class="br-prog"><div class="br-pages">✓</div><div class="br-pct">${esc(new Date(hh.at).toLocaleDateString())}</div></div></div>`).join('');
+  }
+  body.innerHTML = h;
+}
+
 function renderDownload(){
   const b = current; if (!b) return;
+  if (screen !== 'dl') return;
+  loadRoot();
   const id = iaOf(b.url_iarchive);
+  const job = saveTo.jobs.find(x => x.id == b.id) || null;
   const row = (href, name, desc, ext) => `<a class="so-opt" href="${esc(href)}" ${ext ? 'target="_blank" rel="noopener"' : 'download'}><b>${esc(name)}</b><span>${esc(desc)}</span></a>`;
-  let h = divider('Whole Book');
+  // --- save to a folder of your choice ---
+  let h = divider('Save to Folder');
+  if (!canFolder) h += `<div class="so-empty" style="padding:4px 8px 10px">This browser can’t save into folders. Chrome on Android or a computer can — or use the links below.</div>`;
+  else {
+    h += `<button class="so-opt" data-pickfolder><b>${saveTo.root ? esc(saveTo.root.name) : 'Choose Folder'}</b><span>${saveTo.root ? 'Each book goes in its own folder here · tap to change' : 'Pick where your audiobooks go, e.g. Music or Audiobooks'}</span></button>`;
+    if (saveTo.root) {
+      const done = job ? job.state.filter(x => x === 'done' || x === 'skip').length : 0, n = (b._secs || []).length;
+      h += `<div class="so-empty" style="padding:2px 8px 8px">New folder: <b style="color:var(--ink)">${esc(bookFolderName(b))}</b></div>`;
+      if (job && (job.status === 'running' || job.status === 'queued')) h += `<div class="card dl-card">${pbar(jobPct(job), job.status)}<div class="dl-foot"><span class="dl-line">${esc(jobLine(job))}</span><button class="dl-btn" data-dlcancel="${esc(job.id)}">Cancel</button></div></div>`;
+      else h += clothBtn('data-savebook', '#5b6633', job && job.status === 'done' ? 'Saved ✓ — Save Again' : job && job.status !== 'done' ? 'Resume Saving' : 'Save to Folder', 'list-btn');
+      if (job && job.status === 'failed' && job.note) h += `<div class="so-empty" style="padding:2px 8px 10px">${esc(job.note)} — tap Resume to retry them</div>`;
+    }
+  }
+  h += divider('Whole Book');
   if (b.url_zip_file) h += row(https(b.url_zip_file), 'Zip of MP3s', '64kbps · one file · may stall on long books', false);
   if (id) h += row(`https://archive.org/download/${id}/${id}_archive.torrent`, 'Torrent', 'Most reliable for big books · needs a torrent app', false);
   if (id) h += row(`https://archive.org/download/${id}`, 'All Files', 'Internet Archive file list · every format', true);
@@ -994,16 +1278,121 @@ function renderDownload(){
   const secs = b._secs || [];
   if (secs.length){
     h += divider('By Section');
-    h += `<div class="so-empty" style="padding:0 8px 8px">If a section plays instead of saving, long-press it and choose Download link.</div>`;
-    h += secs.map((s, i) => `<a class="book-row sec-row" href="${esc(https(s.listen_url))}" download>
+    const mark = { wait: '⤓', busy: '…', done: '✓', skip: '✓', fail: '✕' };
+    h += secs.map((s, i) => `<a class="book-row sec-row ${job && job.state[i] === 'fail' ? 'failed' : ''}" href="${esc(https(s.listen_url))}" download>
       <div class="sec-n">${i + 1}</div>
-      <div class="br-main"><div class="br-title">${esc(s.title || 'Section ' + (i+1))}</div><div class="br-author">MP3 · 64kbps</div></div>
-      <div class="br-prog"><div class="br-pages">${esc(fmt(s.playtime))} ⤓</div></div></a>`).join('');
+      <div class="br-main"><div class="br-title">${esc(s.title || 'Section ' + (i+1))}</div><div class="br-author">${job && job.state[i] === 'skip' ? 'Already in folder' : 'MP3 · 64kbps'}</div></div>
+      <div class="br-prog"><div class="br-pages">${esc(fmt(s.playtime))} ${job ? mark[job.state[i]] : '⤓'}</div></div></a>`).join('');
   }
-  $('dlBody').innerHTML = h;
+  $('dlBody').innerHTML = h; paintCloth($('dlBody'));
+}
+
+// ================= NARRATOR PAGE =================
+// a narrator's other recordings, from their LibriVox catalog page, split into solo and group projects
+const reader = { id: '', name: '', tab: 'solo', solo: null, group: null };
+const fetchText = async (url, ms = 12000) => {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+  try { const r = await fetch(url, { signal: ctl.signal }); if (!r.ok) throw new Error('http ' + r.status); return await r.text(); }
+  finally { clearTimeout(t); }
+};
+function parseCatalog(txt){
+  let html = txt;
+  try { const j = JSON.parse(txt); html = j.results || j.html || ''; } catch(e) {}
+  const doc = new DOMParser().parseFromString('<ul>' + html + '</ul>', 'text/html');
+  const out = [];
+  doc.querySelectorAll('li').forEach(li => {
+    const a = li.querySelector('h3 a') || li.querySelector('.result-data a') ;
+    if (!a) return;
+    const txtOf = sel => { const e = li.querySelector(sel); return e ? e.textContent.replace(/\s+/g, ' ').trim() : ''; };
+    const img = li.querySelector('img');
+    out.push({
+      title: a.textContent.replace(/\s+/g, ' ').trim(),
+      link: a.getAttribute('href') || '',
+      author: txtOf('.book-author').replace(/\s*\([^)]*\)\s*$/, ''),
+      meta: txtOf('.book-meta').split('|').map(x => x.trim()).filter(x => x && !/^(solo|collaborative|group|dramatic)$/i.test(x)).join(' · '),
+      cover: img ? img.getAttribute('src') : ''
+    });
+  });
+  return out;
+}
+async function readerPage(id, type, page){
+  const key = 'rd|' + id + '|' + type + '|' + page;
+  const saved = PC.get(key, DAY);
+  if (saved) return saved;
+  const url = `https://librivox.org/reader/get_results?primary_key=${encodeURIComponent(id)}&search_category=reader&sub_category=&search_page=${page}&search_order=alpha&project_type=${type}`;
+  const ok = t => { if (!/catalog-result|"results"|<li/i.test(t)) throw new Error('not a results page'); return t; };
+  let txt = null;
+  try { txt = await Promise.any([
+    fetchText(url).then(ok),
+    fetchText('https://api.allorigins.win/raw?url=' + encodeURIComponent(url)).then(ok),
+    fetchText('https://corsproxy.io/?url=' + encodeURIComponent(url)).then(ok)
+  ]); } catch(e) {}
+  if (txt == null) return { items: [], failed: true };
+  const res = { items: parseCatalog(txt) };
+  PC.set(key, res);
+  return res;
+}
+function openReader(id, name){
+  if (reader.id !== id) Object.assign(reader, { id, name, tab: 'solo', solo: null, group: null });
+  show('reader');
+}
+async function loadReader(type, more){
+  const st = reader[type] || (reader[type] = { items: [], page: 0, done: false, loading: false, failed: false });
+  if (st.loading || st.done) return;
+  st.loading = true; renderReader();
+  const id = reader.id, res = await readerPage(id, type, st.page + 1);
+  if (reader.id !== id) return;
+  st.loading = false; st.failed = !!res.failed;
+  if (!res.failed){ st.page++; const seen = new Set(st.items.map(x => x.link)); res.items.forEach(x => { if (!seen.has(x.link)) st.items.push(x); }); if (res.items.length < 10) st.done = true; }
+  renderReader();
+}
+function renderReader(){
+  if (screen !== 'reader') return;
+  const t = reader.tab, st = reader[t];
+  let h = `<div class="segtabs">
+    <button class="tab cloth ${t === 'solo' ? 'active' : ''}" data-rtab="solo" data-cloth="#7a2f2b"><canvas aria-hidden="true"></canvas><span class="lbl">Solo</span></button>
+    <button class="tab cloth ${t === 'group' ? 'active' : ''}" data-rtab="group" data-cloth="#2b5752"><canvas aria-hidden="true"></canvas><span class="lbl">With a Group</span></button></div>`;
+  h += divider(t === 'solo' ? 'Read Alone' : 'Read With Others');
+  if (!st || (st.loading && !st.items.length)) h += loading('Finding recordings');
+  else if (st.failed && !st.items.length) h += errBox("Couldn't load this narrator's list.") + clothBtn('data-rretry', '#303d66', 'Retry', 'list-btn');
+  else if (!st.items.length) h += empty('', t === 'solo' ? 'No solo recordings.' : 'No group recordings.');
+  else {
+    h += st.items.map((x, i) => `<div class="book-row" data-ritem="${i}" role="button" tabindex="0">
+      <div class="cover">${x.cover ? `<img src="${esc(https(x.cover))}" alt="" loading="lazy" onerror="this.parentNode.textContent='${esc(initial(x.title))}'">` : esc(initial(x.title))}</div>
+      <div class="br-main"><div class="br-title">${esc(x.title)}</div><div class="br-author">${esc(x.author)}</div></div>
+      <div class="br-prog"><div class="br-pct">${esc(x.meta)}</div></div></div>`).join('');
+    if (st.loading) h += loading('Loading more');
+    else if (!st.done) h += clothBtn('data-rmore', '#303d66', 'More', 'list-btn');
+  }
+  h += clothLink('https://librivox.org/reader/' + reader.id, '#234a5e', 'LibriVox Page ↗', 'list-btn');
+  $('readerBody').innerHTML = h; paintCloth($('readerBody'));
+  if (!st) loadReader(t);
+}
+// a catalog entry -> its LibriVox project id (title search, matched on the project's page link)
+async function openReaderItem(x){
+  const norm = u => String(u || '').replace(/^https?:\/\/(www\.)?/i, '').replace(/\/+$/, '').toLowerCase();
+  const want = norm(x.link);
+  toast('Opening…');
+  const res = await api({ title: baseTitle(x.title) || x.title, limit: 50, fields: '{id,title,url_librivox,authors}' });
+  let hit = res.books.find(b => norm(b.url_librivox) === want);
+  if (!hit) { const full = await api({ title: baseTitle(x.title) || x.title, limit: 50 }); hit = full.books.find(b => norm(b.url_librivox) === want) || full.books.find(b => (b.title || '').toLowerCase() === x.title.toLowerCase()); }
+  if (hit) openBook(hit.id); else if (x.link) window.open(https(x.link), '_blank', 'noopener');
 }
 
 // ================= NAV =================
+// Back history: the browser's when it's allowed, otherwise the demo keeps its own stack
+const NAV = { browser: true, stack: [null] };
+function hpush(state, title, url){
+  if (NAV.browser) { try { history.pushState(state, '', url); return; } catch(e) { try { history.pushState(state, ''); return; } catch(e2) { NAV.browser = false; } } }
+  NAV.stack.push(state);
+}
+function hreplace(state, title, url){
+  if (NAV.browser) { try { history.replaceState(state, '', url); return; } catch(e) { try { history.replaceState(state, ''); return; } catch(e2) { NAV.browser = false; } } }
+  NAV.stack[NAV.stack.length - 1] = state;
+}
+const hstate = () => NAV.browser ? history.state : NAV.stack[NAV.stack.length - 1];
+function hback(){ if (NAV.browser) { history.back(); return; } if (NAV.stack.length > 1) NAV.stack.pop(); onPop({ state: hstate() }); }
+
 let screen = 'home';
 function show(s, bookId, push = true){
   screen = s;
@@ -1011,31 +1400,47 @@ function show(s, bookId, push = true){
   $('sortScreen').classList.toggle('active', s === 'sort');
   $('bookScreen').classList.toggle('active', s === 'book');
   $('dlScreen').classList.toggle('active', s === 'dl');
+  $('readerScreen').classList.toggle('active', s === 'reader');
   $('homeHeader').classList.toggle('on', s === 'home');
   $('subHeader').classList.toggle('on', s !== 'home');
   if (s === 'home'){ current = null; renderHome(); paintCloth($('homeHeader')); }
-  if (s === 'dl'){ $('hTitle').textContent = 'Download'; renderDownload(); window.scrollTo(0,0); if (push) history.pushState({ dl: current && current.id }, '', '#dl'); }
-  if (s === 'sort'){ $('hTitle').textContent = 'Sort and Filter'; renderSort(); window.scrollTo(0,0); if (push) history.pushState({ sort:1 }, '', '#sort'); }
+  if (s === 'reader'){ $('hTitle').textContent = reader.name || 'Narrator'; window.scrollTo(0,0); if (push) hpush({ reader: reader.id, rname: reader.name }, '', '#reader=' + reader.id); renderReader(); }
+  if (s === 'dl'){ $('hTitle').textContent = 'Download'; renderDownload(); window.scrollTo(0,0); if (push) hpush({ dl: current && current.id }, '', '#dl'); }
+  if (s === 'sort'){ $('hTitle').textContent = 'Sort and Filter'; renderSort(); window.scrollTo(0,0); if (push) hpush({ sort:1 }, '', '#sort'); }
   if (s !== 'home') paintCloth($('subHeader'));
-  if (bookId != null) history.pushState({ book: bookId }, '', '#book=' + bookId);
+  if (bookId != null) hpush({ book: bookId }, '', '#book=' + bookId);
   setFooter();
 }
-function goHome(){ if (screen !== 'home' && history.state) history.back(); else { show('home'); history.replaceState(null, '', location.pathname); } }
-window.addEventListener('popstate', e => {
+function goHome(){ if (screen !== 'home' && hstate()) hback(); else { show('home'); hreplace(null, '', location.pathname); } }
+const onPop = e => {
   if (e.state && e.state.book) openBook(e.state.book, false);
   else if (e.state && e.state.sort) show('sort', null, false);
   else if (e.state && e.state.dl && current) show('dl', null, false);
+  else if (e.state && e.state.reader) { if (reader.id !== e.state.reader) Object.assign(reader, { id: e.state.reader, name: e.state.rname || '', tab: 'solo', solo: null, group: null }); show('reader', null, false); }
   else show('home');
-});
+};
+window.addEventListener('popstate', onPop);
 $('backBtn').onclick = () => { if (screen !== 'home') goHome(); };
 
 // ================= EVENTS =================
 document.querySelectorAll('#tabs .tab').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-open],[data-more],[data-retry],[data-sample],[data-fav],[data-desc],[data-reopen],[data-grp],[data-reset],[data-searchall],[data-dl],[data-shuffle],[data-moremain],[data-mainretry],[data-ver]');
+  const t = e.target.closest('[data-open],[data-more],[data-retry],[data-sample],[data-fav],[data-desc],[data-reopen],[data-grp],[data-reset],[data-searchall],[data-dl],[data-shuffle],[data-moremain],[data-mainretry],[data-ver],[data-reader],[data-rtab],[data-rmore],[data-rretry],[data-ritem],[data-narr],[data-veropen],[data-pickfolder],[data-savebook],[data-dlcancel],[data-dlretry]');
   if (!t) return;
   if (t.dataset.open) return openBook(t.dataset.open, true, tab !== 'saved');
   if (t.dataset.ver) return switchVersion(t.dataset.ver);
+  // only one dropdown open at a time: opening one closes the other
+  if (t.hasAttribute('data-pickfolder')) return chooseFolder();
+  if (t.hasAttribute('data-savebook')) return saveBook();
+  if (t.dataset.dlcancel) { const jb = saveTo.jobs.find(x => x.id == t.dataset.dlcancel); if (jb) { jb.status = 'cancelled'; refreshDL(); if (saveTo.active !== jb) pump(); } return; }
+  if (t.dataset.dlretry) { const jb = saveTo.jobs.find(x => x.id == t.dataset.dlretry); if (jb) { jb.status = 'queued'; jb.state = jb.state.map(x => x === 'fail' ? 'wait' : x); jb.note = ''; refreshDL(); pump(); } return; }
+  if (t.hasAttribute('data-veropen')) { verOpen = !verOpen; if (verOpen) narrOpen = false; const y = window.scrollY; renderBook(); window.scrollTo(0, y); return; }
+  if (t.hasAttribute('data-narr')) { narrOpen = !narrOpen; if (narrOpen) verOpen = false; const y = window.scrollY; renderBook(); window.scrollTo(0, y); return; }
+  if (t.dataset.reader) { e.stopPropagation(); return openReader(t.dataset.reader, t.dataset.rname); }
+  if (t.dataset.rtab) { reader.tab = t.dataset.rtab; window.scrollTo(0,0); return renderReader(); }
+  if (t.hasAttribute('data-rmore')) return loadReader(reader.tab, true);
+  if (t.hasAttribute('data-rretry')) { reader[reader.tab] = null; return renderReader(); }
+  if (t.dataset.ritem != null) { const x = (reader[reader.tab] || { items: [] }).items[+t.dataset.ritem]; if (x) openReaderItem(x); return; }
   if (t.hasAttribute('data-shuffle')) return pickMain();
   if (t.hasAttribute('data-moremain')) return moreMain();
   if (t.hasAttribute('data-mainretry')) return loadMain();
@@ -1060,7 +1465,7 @@ document.addEventListener('click', e => {
   }
 });
 
-document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.book-row,.bk-card')) { e.preventDefault(); e.target.click(); } });
+document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.book-row,.bk-card,.reader-chip,.dd-card')) { e.preventDefault(); e.target.click(); } });
 
 // ================= BOOKCLOTH =================
 // Stack Tracker's pearlescent bookcloth: a fine plain weave lit from the top left, with a faint shimmer,
@@ -1151,7 +1556,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
 // ================= INIT =================
 const hb = (location.hash.match(/book=(\d+)/) || [])[1];
 show('home');
-history.replaceState(null, '', location.pathname);
+hreplace(null, '', location.pathname);
 switchTab('main');
 if (hb) openBook(hb);
 })();
