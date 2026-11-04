@@ -72,6 +72,13 @@ button:focus-visible,input:focus-visible,.book-row:focus-visible{outline:2px sol
 .dl-line{font:700 .62rem var(--sans);letter-spacing:.3px;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dl-btn{flex:none;height:28px;padding:0 12px;border:2.5px solid #000;border-radius:6px;background:var(--panel);font:700 .62rem var(--sans);letter-spacing:.3px;text-transform:uppercase;color:var(--ink)}
 .dl-btn:active{background:var(--hdr-cell)}
+.helper{padding:10px}
+.hp-title{font:700 .78rem var(--sans);letter-spacing:.3px;text-transform:uppercase;color:var(--ink)}
+.hp-text{margin-top:4px;font:400 .82rem/1.4 var(--serif);color:var(--ink)}
+.hp-step{margin-top:10px;font:700 .62rem var(--sans);letter-spacing:.3px;text-transform:uppercase;color:var(--muted)}
+.hp-cmd{display:flex;align-items:flex-start;gap:6px;margin-top:4px}
+.hp-cmd code{flex:1;min-width:0;padding:6px 8px;background:var(--hdr-cell);border:2px solid #000;border-radius:6px;font:400 .62rem/1.35 ui-monospace,monospace;color:var(--ink);word-break:break-all;-webkit-user-select:all;user-select:all}
+.hp-foot{display:flex;align-items:center;justify-content:space-between;margin-top:10px}
 .dd-panel{margin-bottom:4px;padding:4px 4px 0;background:var(--hdr-cell);border:3px solid #000;border-top:none;border-radius:0 0 8px 8px}
 .dd-panel .nr-row{height:45px;padding:0 8px 0 12px}
 .nr-go{flex:none;font:700 1.2rem var(--serif);color:var(--muted)}
@@ -1141,8 +1148,46 @@ const clean = t => String(t || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g
 const bookFolderName = b => { const v = verLabel(b.title); return clean(`${baseTitle(b.title) || b.title} - ${authors(b)}${v !== 'Version 1' || (versions.list.length > 1) ? ` (${v})` : ''}`); };
 async function exists(dir, name){ try { const f = await (await dir.getFileHandle(name)).getFile(); return f.size > 0; } catch(e) { return false; } }
 // streams a file into the folder, reporting bytes as they arrive (so the bar moves within each section)
+// The Internet Archive doesn't let web pages read its files, so each file is tried through every route:
+// straight from the archive, the helper on this phone (Termux), then public relays. The route that works is remembered.
+const HELPER = 'http://127.0.0.1:8317';
+const helperState = { up: null, checked: 0 };
+async function helperUp(force){
+  if (!force && Date.now() - helperState.checked < 20000) return helperState.up;
+  helperState.checked = Date.now();
+  try { const r = await fetchWithTimeout(HELPER + '/ping', 1500); helperState.up = r.ok && /lvhelper/.test(await r.text()); }
+  catch(e) { helperState.up = false; }
+  return helperState.up;
+}
+async function fetchWithTimeout(url, ms){
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+  try { return await fetch(url, { signal: ctl.signal }); } finally { clearTimeout(t); }
+}
+const ROUTES = {
+  direct: url => fetch(url),
+  helper: url => fetch(HELPER + '/fetch?url=' + encodeURIComponent(url)),
+  relay1: url => fetch('https://corsproxy.io/?url=' + encodeURIComponent(url)),
+  relay2: url => fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(url))
+};
+let dlRoute = store.get('lv_dlroute', '');
+async function openFile(url){
+  const order = [dlRoute, 'direct', 'helper', 'relay1', 'relay2'].filter((r, i, a) => r && ROUTES[r] && a.indexOf(r) === i);
+  for (const route of order) {
+    if (route === 'helper' && !(await helperUp())) continue;
+    try {
+      const r = await ROUTES[route](url);
+      const type = r.headers.get('content-type') || '';
+      // a relay that answers with an error page or a size-limit notice doesn't count
+      if (r.ok && r.body && !/text\/html|application\/json/i.test(type)) {
+        if (dlRoute !== route) { dlRoute = route; store.set('lv_dlroute', route); }
+        return r;
+      }
+    } catch(e) {}
+  }
+  const err = new Error('blocked'); err.blocked = true; throw err;
+}
 async function writeUrl(dir, name, url, onBytes = () => {}, isCancelled = () => false){
-  const r = await fetch(url); if (!r.ok) throw new Error('http ' + r.status);
+  const r = await openFile(url);
   const total = +r.headers.get('content-length') || 0;
   const fh = await dir.getFileHandle(name + '.part', { create: true }), w = await fh.createWritable();
   let got = 0;
@@ -1194,11 +1239,14 @@ async function runJob(job){
       if (await exists(dir, name)) { job.state[i] = 'skip'; refreshDL(); continue; }
       job.state[i] = 'busy'; job.file = { got: 0, total: 0 }; refreshDL();
       try { await writeUrl(dir, name, url, (got, total) => { job.file = { got, total }; refreshDL(); }, cancelled); job.state[i] = 'done'; }
-      catch(e) { job.state[i] = cancelled() ? 'wait' : 'fail'; }
+      catch(e) { job.state[i] = cancelled() ? 'wait' : 'fail'; if (e && e.blocked) job.blocked = true; }
+      // nothing can reach the audio: stop here rather than fail every section the same way
+      if (job.blocked && job.state[i] === 'fail' && !job.state.some(x => x === 'done')) break;
       job.file = { got: 0, total: 0 }; refreshDL();
     }
     const failed = job.state.filter(x => x === 'fail').length;
-    if (!cancelled()) { job.status = failed ? 'failed' : 'done'; job.note = failed ? `${failed} section${failed > 1 ? 's' : ''} didn’t save` : ''; }
+    if (!cancelled()) { job.status = failed ? 'failed' : 'done';
+      job.note = job.blocked && !job.state.some(x => x === 'done') ? 'Couldn’t reach the audio — needs the download helper' : failed ? `${failed} section${failed > 1 ? 's' : ''} didn’t save` : ''; }
   } catch(e) { job.status = 'failed'; job.note = 'Couldn’t write to that folder'; }
   if (job.status === 'done') {
     dlHistory = [{ id: job.id, title: baseTitle(b.title) || b.title, author: authors(b), folder: job.folder, root: saveTo.root.name, n: job.n, at: Date.now() },
@@ -1250,6 +1298,19 @@ function renderDownloads(){
   body.innerHTML = h;
 }
 
+const HELPER_INSTALL = 'pkg install -y python && curl -fsSL https://my-librivox-box.github.io/My-LibriVox-Box/lvhelper.py -o ~/lvhelper.py && python ~/lvhelper.py';
+const HELPER_BOOT = "mkdir -p ~/.termux/boot && printf '#!/data/data/com.termux/files/usr/bin/sh\\ntermux-wake-lock\\n/data/data/com.termux/files/usr/bin/python /data/data/com.termux/files/home/lvhelper.py &\\n' > ~/.termux/boot/lvhelper.sh && chmod +x ~/.termux/boot/lvhelper.sh";
+function helperCard(){
+  return `<div class="card helper">
+    <div class="hp-title">Download helper</div>
+    <div class="hp-text">The Internet Archive won’t let web pages fetch its audio. A tiny helper in Termux does it for the app, then the app saves into your folder. It only fetches from archive.org and only answers apps on this phone.</div>
+    <div class="hp-step">1 · In Termux, run once (installs and starts it):</div>
+    <div class="hp-cmd"><code>${esc(HELPER_INSTALL)}</code><button class="dl-btn" data-copy="install">Copy</button></div>
+    <div class="hp-step">2 · Optional — start it with your phone (needs Termux:Boot):</div>
+    <div class="hp-cmd"><code>${esc(HELPER_BOOT)}</code><button class="dl-btn" data-copy="boot">Copy</button></div>
+    <div class="hp-foot"><span class="dl-line">${helperState.up ? 'Helper running ✓' : 'Helper not running'}</span><button class="dl-btn" data-helpercheck>Check</button></div>
+  </div>`;
+}
 function renderDownload(){
   const b = current; if (!b) return;
   if (screen !== 'dl') return;
@@ -1262,6 +1323,12 @@ function renderDownload(){
   if (!canFolder) h += `<div class="so-empty" style="padding:4px 8px 10px">This browser can’t save into folders. Chrome on Android or a computer can — or use the links below.</div>`;
   else {
     h += `<button class="so-opt" data-pickfolder><b>${saveTo.root ? esc(saveTo.root.name) : 'Choose Folder'}</b><span>${saveTo.root ? 'Each book goes in its own folder here · tap to change' : 'Pick where your audiobooks go, e.g. Music or Audiobooks'}</span></button>`;
+    // how files get here: shows the helper setup when nothing else can reach the audio
+    const lastBlocked = saveTo.jobs.some(x => x.blocked);
+    if (helperState.up) h += `<div class="so-empty" style="padding:2px 8px 6px">Download helper running ✓</div>`;
+    else if (lastBlocked || dlRoute === 'helper') h += helperCard();
+    else if (dlRoute) h += `<div class="so-empty" style="padding:2px 8px 6px">Downloads working${dlRoute === 'direct' ? '' : ' through a public relay'} ✓</div>`;
+    if (helperState.checked === 0) helperUp().then(() => refreshDL());
     if (saveTo.root) {
       const done = job ? job.state.filter(x => x === 'done' || x === 'skip').length : 0, n = (b._secs || []).length;
       h += `<div class="so-empty" style="padding:2px 8px 8px">New folder: <b style="color:var(--ink)">${esc(bookFolderName(b))}</b></div>`;
@@ -1425,13 +1492,15 @@ $('backBtn').onclick = () => { if (screen !== 'home') goHome(); };
 // ================= EVENTS =================
 document.querySelectorAll('#tabs .tab').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-open],[data-more],[data-retry],[data-sample],[data-fav],[data-desc],[data-reopen],[data-grp],[data-reset],[data-searchall],[data-dl],[data-shuffle],[data-moremain],[data-mainretry],[data-ver],[data-reader],[data-rtab],[data-rmore],[data-rretry],[data-ritem],[data-narr],[data-veropen],[data-pickfolder],[data-savebook],[data-dlcancel],[data-dlretry]');
+  const t = e.target.closest('[data-open],[data-more],[data-retry],[data-sample],[data-fav],[data-desc],[data-reopen],[data-grp],[data-reset],[data-searchall],[data-dl],[data-shuffle],[data-moremain],[data-mainretry],[data-ver],[data-reader],[data-rtab],[data-rmore],[data-rretry],[data-ritem],[data-narr],[data-veropen],[data-pickfolder],[data-savebook],[data-dlcancel],[data-dlretry],[data-copy],[data-helpercheck]');
   if (!t) return;
   if (t.dataset.open) return openBook(t.dataset.open, true, tab !== 'saved');
   if (t.dataset.ver) return switchVersion(t.dataset.ver);
   // only one dropdown open at a time: opening one closes the other
   if (t.hasAttribute('data-pickfolder')) return chooseFolder();
   if (t.hasAttribute('data-savebook')) return saveBook();
+  if (t.dataset.copy) { const txt = t.dataset.copy === 'boot' ? HELPER_BOOT : HELPER_INSTALL; (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast('Copied — paste it in Termux'), () => toast('Long-press the command to copy it')); return; }
+  if (t.hasAttribute('data-helpercheck')) { helperUp(true).then(up => { toast(up ? 'Helper running ✓' : 'Helper not running yet'); refreshDL(); }); return; }
   if (t.dataset.dlcancel) { const jb = saveTo.jobs.find(x => x.id == t.dataset.dlcancel); if (jb) { jb.status = 'cancelled'; refreshDL(); if (saveTo.active !== jb) pump(); } return; }
   if (t.dataset.dlretry) { const jb = saveTo.jobs.find(x => x.id == t.dataset.dlretry); if (jb) { jb.status = 'queued'; jb.state = jb.state.map(x => x === 'fail' ? 'wait' : x); jb.note = ''; refreshDL(); pump(); } return; }
   if (t.hasAttribute('data-veropen')) { verOpen = !verOpen; if (verOpen) narrOpen = false; const y = window.scrollY; renderBook(); window.scrollTo(0, y); return; }
