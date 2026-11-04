@@ -913,7 +913,7 @@ async function resolveIA(ident, title, last){
 async function openBook(id, push = true, preferTop = false){
   if (push) { narrOpen = false; verOpen = false; }   // a new book starts closed; coming Back keeps it as you left it
   show('book', push ? id : null);
-  const known = list.books.find(b => b.id == id) || main.pool.find(b => b.id == id) || (favs[id] && favs[id].book);
+  const known = list.books.find(b => b.id == id) || main.pool.find(b => b.id == id) || (favs[id] && favs[id].book) || (reader.solo && reader.solo.items.find(x => x.id == id));
   $('hTitle').textContent = known ? known.title : 'Loading…';
   $('bookBody').innerHTML = loading('Loading book'); setFooter();
   window.scrollTo(0,0);
@@ -1502,25 +1502,7 @@ function parseCatalog(txt){
   });
   return out;
 }
-const viaRelay = u => 'https://corsproxy.io/?url=' + encodeURIComponent(u);
-const READER_PAGE = 25;   // LibriVox sends 25 results a page
-// 1) the narrator's real list (solo / group). LibriVox only answers this for requests marked as coming
-//    from its own page (X-Requested-With), so the marker is sent, and the relay passes it along.
-async function readerPage(id, type, page){
-  const key = 'rd|' + id + '|' + type + '|' + page;
-  const saved = PC.get(key, DAY);
-  if (saved) return saved;
-  const url = `https://librivox.org/reader/get_results?primary_key=${encodeURIComponent(id)}&search_category=reader&sub_category=&search_page=${page}&search_order=alpha&project_type=${type}`;
-  const marked = { headers: { 'X-Requested-With': 'XMLHttpRequest' } };
-  const ok = t => { const j = JSON.parse(t); if (!j || typeof j.results !== 'string') throw new Error('not a results page'); return t; };
-  let txt = null;
-  try { txt = await Promise.any([fetchText(url, 12000, marked).then(ok), fetchText(viaRelay(url), 12000, marked).then(ok)]); } catch(e) {}
-  if (txt == null) return { items: [], failed: true };
-  const res = { items: parseCatalog(txt) };
-  PC.set(key, res);
-  return res;
-}
-// 2) backup: the narrator's "Reader section details" page, which LibriVox builds on its server, so any relay
+// the narrator's "Reader section details" page, which LibriVox builds on its server, so any relay
 //    can read it. It lists every project title they read for; finished ones are kept, then each is looked up
 //    to find the book and whether it's solo or group.
 async function readerTitles(id){
@@ -1529,7 +1511,11 @@ async function readerTitles(id){
   const url = 'https://librivox.org/sections/readers/' + encodeURIComponent(id);
   const ok = t => { if (!/reader_view/.test(t)) throw new Error('not the section page'); return t; };
   let txt = null;
-  try { txt = await Promise.any([fetchText(viaRelay(url)).then(ok), fetchText('https://api.allorigins.win/raw?url=' + encodeURIComponent(url)).then(ok)]); } catch(e) {}
+  // free relays that allow live websites; a reader with hundreds of sections makes a big, slow page, so allow time
+  try { txt = await Promise.any([
+    fetchText('https://api.allorigins.win/raw?url=' + encodeURIComponent(url), 40000).then(ok),
+    fetchText('https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(url), 40000).then(ok)
+  ]); } catch(e) {}
   if (txt == null) return { titles: [], failed: true };
   const doc = new DOMParser().parseFromString(txt, 'text/html');
   const rows = [...doc.querySelectorAll('#reader_view tbody tr')];
@@ -1538,6 +1524,15 @@ async function readerTitles(id){
   const res = { titles };
   PC.set(key, res);
   return res;
+}
+// Solo recordings: every solo LibriVox upload to the Internet Archive says "Read in <language> by <reader>.",
+// so the archive's search finds them directly — no relay needed.
+const iaPhrase = t => String(t || '').replace(/["\\]/g, ' ').replace(/\s+/g, ' ').trim();
+async function readerSolo(name, page){
+  const q = `collection:librivoxaudio AND description:("by ${iaPhrase(name)}")`;
+  const res = await iaSearch(q, 'titleSorter asc', page, 50);
+  if (res.failed) return { items: [], failed: true };
+  return { total: res.total, items: res.books.map(b => ({ id: b.id, title: b.title, author: authors(b), cover: b.coverart_thumbnail, meta: b.language || '', kind: 'solo', iaLast: b.iaLast })) };
 }
 let readerFound = store.get('lv_rdfound', {});   // remembered lookups: reader id + title -> book summary
 async function lookupReaderTitle(rid, title){
@@ -1559,15 +1554,15 @@ async function lookupReaderTitle(rid, title){
   store.set('lv_rdfound', readerFound);
   return found;
 }
-async function loadReaderBackup(){
-  const id = reader.id, bk = reader.backup = { titles: [], done: 0, missed: 0, loading: true, failed: false };
+async function loadReaderGroup(){
+  const id = reader.id, bk = reader.backup = { titles: [], done: 0, loading: true, failed: false };
+  reader.group = { items: [], done: true };
   renderReader();
   const res = await readerTitles(id);
   if (reader.id !== id) return;
   bk.loading = false;
   if (res.failed) { bk.failed = true; renderReader(); return; }
   bk.titles = res.titles.slice().sort((a, b) => normT(a).localeCompare(normT(b)));
-  reader.solo = { items: [], done: true }; reader.group = { items: [], done: true };
   renderReader();
   let next = 0, redraw = 0;
   const worker = async () => {
@@ -1576,8 +1571,13 @@ async function loadReaderBackup(){
       let f = null; try { f = await lookupReaderTitle(id, t); } catch(e) {}
       if (reader.id !== id) return;
       bk.done++;
-      if (f) { const st = reader[f.kind]; if (!st.items.some(x => x.id == f.id)) { st.items.push({ ...f, meta: '' }); st.items.sort((a, b) => normT(a.title).localeCompare(normT(b.title))); } }
-      else bk.missed++;
+      if (f) {
+        const st = reader[f.kind] || (reader[f.kind] = { items: [], page: 0, done: true });
+        // a solo book the archive search already found isn't added twice
+        if (!st.items.some(x => x.id == f.id || normT(baseTitle(x.title) || x.title) === normT(baseTitle(f.title) || f.title))) {
+          st.items.push({ ...f, meta: '' }); st.items.sort((a, b) => normT(a.title).localeCompare(normT(b.title)));
+        }
+      }
       clearTimeout(redraw); redraw = setTimeout(() => { if (reader.id === id) { const y = window.scrollY; renderReader(); window.scrollTo(0, y); } }, 200);
     }
   };
@@ -1587,17 +1587,21 @@ function openReader(id, name){
   if (reader.id !== id) Object.assign(reader, { id, name, tab: 'solo', solo: null, group: null, backup: null });
   show('reader');
 }
-async function loadReader(type, more){
-  const st = reader[type] || (reader[type] = { items: [], page: 0, done: false, loading: false, failed: false });
+async function loadReader(type){
+  if (type === 'group') { if (!reader.backup) loadReaderGroup(); return; }
+  const st = reader.solo || (reader.solo = { items: [], page: 0, done: false, loading: false, failed: false });
   if (st.loading || st.done) return;
   st.loading = true; renderReader();
-  const id = reader.id, res = await readerPage(id, type, st.page + 1);
+  const id = reader.id, res = await readerSolo(reader.name, st.page + 1);
   if (reader.id !== id) return;
   st.loading = false; st.failed = !!res.failed;
-  // the real list can't be reached on the first page: switch to the backup for this narrator
-  if (res.failed && st.page === 0 && !st.items.length) { reader.solo = reader.group = null; return loadReaderBackup(); }
-  if (!res.failed){ st.page++; const seen = new Set(st.items.map(x => x.link)); res.items.forEach(x => { if (!seen.has(x.link)) st.items.push(x); }); if (res.items.length < READER_PAGE) st.done = true; }
+  if (!res.failed) {
+    st.page++;
+    res.items.forEach(x => { if (!st.items.some(y => y.id == x.id || normT(baseTitle(y.title) || y.title) === normT(baseTitle(x.title) || x.title))) st.items.push(x); });
+    if (res.items.length < 50 || st.page * 50 >= (res.total || 0)) st.done = true;
+  }
   renderReader();
+  if (!reader.backup) loadReaderGroup();   // group recordings (and any solo ones the archive missed) fill in behind
 }
 function renderReader(){
   if (screen !== 'reader') return;
@@ -1606,15 +1610,15 @@ function renderReader(){
     <button class="tab cloth ${t === 'solo' ? 'active' : ''}" data-rtab="solo" data-cloth="#7a2f2b"><canvas aria-hidden="true"></canvas><span class="lbl">Solo</span></button>
     <button class="tab cloth ${t === 'group' ? 'active' : ''}" data-rtab="group" data-cloth="#2b5752"><canvas aria-hidden="true"></canvas><span class="lbl">With a Group</span></button></div>`;
   h += divider(t === 'solo' ? 'Read Alone' : 'Read With Others');
-  const bk = reader.backup;
-  if (bk && bk.failed) h += errBox("Couldn't load this narrator's list.") + clothBtn('data-rretry', '#303d66', 'Retry', 'list-btn');
-  else if (bk && bk.loading) h += loading('Finding recordings');
-  else if (bk && bk.done < bk.titles.length) h += `<div class="card dl-card">${pbar(bk.titles.length ? bk.done / bk.titles.length * 100 : 0, 'queued')}<div class="dl-foot"><span class="dl-line">Sorting recordings · ${bk.done} of ${bk.titles.length}</span></div></div>`;
-  const bkBusy = bk && (bk.failed || bk.loading);
-  if (bkBusy) { /* the backup's own message is showing */ }
+  const bk = reader.backup, sorting = bk && !bk.loading && !bk.failed && bk.done < bk.titles.length;
+  if (t === 'group' && bk && bk.failed) h += errBox("LibriVox's site didn't answer for this narrator's group recordings. Try again, or see them on the LibriVox page.") + clothBtn('data-rretry', '#303d66', 'Retry', 'list-btn');
+  else if (t === 'group' && bk && bk.loading) h += loading('Finding group recordings — big lists take a moment');
+  else if (sorting) h += `<div class="card dl-card">${pbar(bk.titles.length ? bk.done / bk.titles.length * 100 : 0, 'queued')}<div class="dl-foot"><span class="dl-line">Sorting recordings · ${bk.done} of ${bk.titles.length}</span></div></div>`;
+  const bkBusy = t === 'group' && bk && (bk.failed || bk.loading);
+  if (bkBusy) { /* the group list's own message is showing */ }
   else if (!st || (st.loading && !st.items.length)) h += loading('Finding recordings');
   else if (st.failed && !st.items.length) h += errBox("Couldn't load this narrator's list.") + clothBtn('data-rretry', '#303d66', 'Retry', 'list-btn');
-  else if (!st.items.length) h += empty('', bk && bk.done < bk.titles.length ? 'Sorting…' : t === 'solo' ? 'No solo recordings.' : 'No group recordings.');
+  else if (!st.items.length) h += empty('', sorting ? 'Sorting…' : t === 'solo' ? 'No solo recordings.' : 'No group recordings.');
   else {
     h += st.items.map((x, i) => `<div class="book-row" data-ritem="${i}" role="button" tabindex="0">
       <div class="cover">${x.cover ? `<img src="${esc(https(x.cover))}" alt="" loading="lazy" onerror="this.parentNode.textContent='${esc(initial(x.title))}'">` : esc(initial(x.title))}</div>
@@ -1625,7 +1629,7 @@ function renderReader(){
   }
   h += clothLink('https://librivox.org/reader/' + reader.id, '#234a5e', 'LibriVox Page ↗', 'list-btn');
   $('readerBody').innerHTML = h; paintCloth($('readerBody'));
-  if (!st && !reader.backup) loadReader(t);
+  if (!st || (t === 'group' && !bk)) loadReader(t);
 }
 // a catalog entry -> its LibriVox project id (title search, matched on the project's page link)
 async function openReaderItem(x){
@@ -1714,8 +1718,8 @@ document.addEventListener('click', e => {
   if (t.hasAttribute('data-narr')) { narrOpen = !narrOpen; if (narrOpen) verOpen = false; const y = window.scrollY; renderBook(); window.scrollTo(0, y); return; }
   if (t.dataset.reader) { e.stopPropagation(); return openReader(t.dataset.reader, t.dataset.rname); }
   if (t.dataset.rtab) { reader.tab = t.dataset.rtab; window.scrollTo(0,0); return renderReader(); }
-  if (t.hasAttribute('data-rmore')) return loadReader(reader.tab, true);
-  if (t.hasAttribute('data-rretry')) { if (reader.backup) { reader.backup = null; reader.solo = reader.group = null; PC.set('rds|' + reader.id, null); } else reader[reader.tab] = null; return renderReader(); }
+  if (t.hasAttribute('data-rmore')) return loadReader(reader.tab);
+  if (t.hasAttribute('data-rretry')) { if (reader.tab === 'group') { reader.backup = null; reader.group = null; PC.set('rds|' + reader.id, null); } else reader.solo = null; return renderReader(); }
   if (t.dataset.ritem != null) { const x = (reader[reader.tab] || { items: [] }).items[+t.dataset.ritem]; if (x) openReaderItem(x); return; }
   if (t.hasAttribute('data-shuffle')) return pickMain();
   if (t.hasAttribute('data-moremain')) return moreMain();
