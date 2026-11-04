@@ -297,6 +297,7 @@ input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:4px;bac
 </footer>
 <audio id="audio" preload="none"></audio>
 <div class="toast" id="toast"></div>
+<input type="file" id="zipPick" accept=".zip,application/zip,application/x-zip-compressed" hidden>
 
 <script>
 
@@ -1135,7 +1136,7 @@ async function chooseFolder(){
   try {
     const h = await window.showDirectoryPicker({ id: 'librivox-box', mode: 'readwrite', startIn: 'music' });
     saveTo.root = h; try { await idb.set('root', h); } catch(e) {}
-    toast('Saving to ' + h.name); renderDownload();
+    toast('Saving to ' + h.name); refreshDL();
   } catch(e) {
     if (e && e.name === 'AbortError') return;                       // you closed the picker
     toast(e && e.name === 'SecurityError' ? 'This page can’t open folders here — open the app in Chrome' : 'Couldn’t open that folder');
@@ -1205,6 +1206,114 @@ async function writeUrl(dir, name, url, onBytes = () => {}, isCancelled = () => 
   // finished: give it its real name (a half-saved file never looks complete)
   if (fh.move) await fh.move(name); else { const f = await fh.getFile(); const w2 = await (await dir.getFileHandle(name, { create: true })).createWritable(); await w2.write(f); await w2.close(); await dir.removeEntry(name + '.part'); }
 }
+// ===== Import Zip: unpack a zip you downloaded into the book's own folder in your chosen folder =====
+const AUDIO_EXT = /\.(mp3|m4a|m4b|ogg|opus|flac|wav)$/i;
+async function zipEntries(file){
+  const u16 = (v, o) => v.getUint16(o, true), u32 = (v, o) => v.getUint32(o, true), u64 = (v, o) => Number(v.getBigUint64(o, true));
+  const tailLen = Math.min(file.size, 65557);
+  const tail = new DataView(await file.slice(file.size - tailLen).arrayBuffer());
+  let e = -1;
+  for (let i = tailLen - 22; i >= 0; i--) if (u32(tail, i) === 0x06054b50) { e = i; break; }
+  if (e < 0) throw new Error('not a zip');
+  let count = u16(tail, e + 10), cdSize = u32(tail, e + 12), cdOff = u32(tail, e + 16);
+  // big zips (over 4 GB or 65,535 files) keep the real numbers in a ZIP64 record
+  if (cdOff === 0xFFFFFFFF || count === 0xFFFF || cdSize === 0xFFFFFFFF) {
+    const loc = e - 20;
+    if (loc >= 0 && u32(tail, loc) === 0x07064b50) {
+      const z = new DataView(await file.slice(u64(tail, loc + 8), u64(tail, loc + 8) + 56).arrayBuffer());
+      if (u32(z, 0) === 0x06064b50) { count = u64(z, 32); cdSize = u64(z, 40); cdOff = u64(z, 48); }
+    }
+  }
+  const cd = new DataView(await file.slice(cdOff, cdOff + cdSize).arrayBuffer());
+  const utf8 = new TextDecoder('utf-8'), out = [];
+  for (let p = 0, k = 0; k < count && p + 46 <= cd.byteLength; k++) {
+    if (u32(cd, p) !== 0x02014b50) break;
+    const method = u16(cd, p + 10), nameLen = u16(cd, p + 28), extraLen = u16(cd, p + 30), commentLen = u16(cd, p + 32);
+    let comp = u32(cd, p + 20), size = u32(cd, p + 24), off = u32(cd, p + 42);
+    const name = utf8.decode(new Uint8Array(cd.buffer, cd.byteOffset + p + 46, nameLen));
+    // ZIP64 sizes/offset live in the extra field when the normal ones are maxed out
+    for (let x = p + 46 + nameLen, end = x + extraLen; x + 4 <= end; ) {
+      const id = u16(cd, x), len = u16(cd, x + 2); let q = x + 4;
+      if (id === 0x0001) {
+        if (size === 0xFFFFFFFF) { size = u64(cd, q); q += 8; }
+        if (comp === 0xFFFFFFFF) { comp = u64(cd, q); q += 8; }
+        if (off === 0xFFFFFFFF) { off = u64(cd, q); q += 8; }
+      }
+      x += 4 + len;
+    }
+    out.push({ name, method, comp, size, off });
+    p += 46 + nameLen + extraLen + commentLen;
+  }
+  return out;
+}
+async function zipStream(file, en){
+  const h = new DataView(await file.slice(en.off, en.off + 30).arrayBuffer());
+  if (h.getUint32(0, true) !== 0x04034b50) throw new Error('bad zip entry');
+  const start = en.off + 30 + h.getUint16(26, true) + h.getUint16(28, true);
+  const raw = file.slice(start, start + en.comp).stream();
+  if (en.method === 0) return raw;                                            // stored (MP3s usually are)
+  if (en.method === 8) return raw.pipeThrough(new DecompressionStream('deflate-raw'));
+  throw new Error('unsupported compression');
+}
+// streams one zip entry into the folder, with byte progress, under a temporary name until it's complete
+async function writeStream(dir, name, stream, total, onBytes = () => {}, isCancelled = () => false){
+  const fh = await dir.getFileHandle(name + '.part', { create: true }), w = await fh.createWritable();
+  let got = 0;
+  try {
+    const rd = stream.getReader();
+    for (;;) { const { done, value } = await rd.read(); if (done) break; if (isCancelled()) throw new Error('cancelled'); await w.write(value); got += value.length; onBytes(got, total || got); }
+    await w.close();
+  } catch(e) { try { await w.abort(); } catch(_) {} try { await dir.removeEntry(name + '.part'); } catch(_) {} throw e; }
+  if (fh.move) await fh.move(name); else { const f = await fh.getFile(); const w2 = await (await dir.getFileHandle(name, { create: true })).createWritable(); await w2.write(f); await w2.close(); await dir.removeEntry(name + '.part'); }
+}
+let zipFor = null;   // the book the next picked zip belongs to (null = name the folder after the zip)
+async function pickZip(book){
+  if (!saveTo.root) { toast('Choose a folder first'); return; }
+  zipFor = book || null;
+  const inp = $('zipPick'); inp.value = ''; inp.click();
+}
+async function importZip(file){
+  if (!file) return;
+  if (!(await allowed(saveTo.root))) { toast('Folder permission wasn’t given'); return; }
+  let entries;
+  try { entries = (await zipEntries(file)).filter(en => !en.name.endsWith('/') && AUDIO_EXT.test(en.name)); }
+  catch(e) { toast('That file isn’t a zip the app can read'); return; }
+  if (!entries.length) { toast('That zip has no MP3s in it'); return; }
+  entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const b = zipFor, folder = b ? bookFolderName(b) : clean(file.name.replace(/\.zip$/i, '').replace(/\s*\(\d+\)$/, ''));   // phones add " (1)" to repeat downloads
+  const id = b ? b.id : 'zip:' + folder;
+  if (saveTo.jobs.some(j => j.id == id && (j.status === 'running' || j.status === 'queued'))) { toast('Already importing'); return; }
+  const job = { id, kind: 'zip', zip: file, entries, book: b ? { ...slim(b), title: b.title, url_librivox: b.url_librivox, description: b.description } : { title: folder, authors: [] },
+    folder, n: entries.length, state: entries.map(() => 'wait'), file: { got: 0, total: 0 }, status: 'queued', note: '' };
+  saveTo.jobs = [job, ...saveTo.jobs.filter(j => j.id != id)];
+  toast(saveTo.active ? 'Queued — see Downloads' : 'Unpacking — see Downloads');
+  refreshDL(); pump();
+}
+async function runZipJob(job){
+  saveTo.active = job; job.status = 'running'; refreshDL();
+  const cancelled = () => job.status === 'cancelled';
+  try {
+    const dir = await saveTo.root.getDirectoryHandle(job.folder, { create: true });
+    if (job.book.url_librivox) await writeText(dir, 'info.txt', [baseTitle(job.book.title) || job.book.title, 'by ' + authors(job.book), verLabel(job.book.title), 'LibriVox: ' + job.book.url_librivox, '', stripHTML(job.book.description)].join('\n'));
+    for (let i = 0; i < job.entries.length; i++) {
+      if (cancelled()) break;
+      const en = job.entries[i], name = clean(en.name.split('/').pop());   // flattened: no folders inside the book's folder
+      if (await exists(dir, name)) { job.state[i] = 'skip'; refreshDL(); continue; }
+      job.state[i] = 'busy'; job.file = { got: 0, total: en.size }; refreshDL();
+      try { await writeStream(dir, name, await zipStream(job.zip, en), en.size, (got, total) => { job.file = { got, total }; refreshDL(); }, cancelled); job.state[i] = 'done'; }
+      catch(e) { job.state[i] = cancelled() ? 'wait' : 'fail'; }
+      job.file = { got: 0, total: 0 }; refreshDL();
+    }
+    const failed = job.state.filter(x => x === 'fail').length;
+    if (!cancelled()) { job.status = failed ? 'failed' : 'done'; job.note = failed ? `${failed} file${failed > 1 ? 's' : ''} didn’t unpack` : ''; }
+  } catch(e) { job.status = 'failed'; job.note = 'Couldn’t write to that folder'; }
+  if (job.status === 'done') {
+    dlHistory = [{ id: job.id, title: baseTitle(job.book.title) || job.book.title, author: authors(job.book), folder: job.folder, root: saveTo.root.name, n: job.n, at: Date.now() },
+      ...dlHistory.filter(h => h.id != job.id)].slice(0, 40);
+    store.set('lv_dlhist', dlHistory);
+  }
+  saveTo.active = null; refreshDL(); pump();
+}
 async function writeText(dir, name, text){ const w = await (await dir.getFileHandle(name, { create: true })).createWritable(); await w.write(text); await w.close(); }
 async function saveBook(){
   const b = current; if (!b || !saveTo.root) return;
@@ -1220,7 +1329,7 @@ async function saveBook(){
 function pump(){
   if (saveTo.active) return;
   const next = [...saveTo.jobs].reverse().find(j => j.status === 'queued');   // oldest waiting first
-  if (next) runJob(next);
+  if (next) (next.kind === 'zip' ? runZipJob : runJob)(next);
 }
 async function runJob(job){
   saveTo.active = job; job.status = 'running'; refreshDL();
@@ -1261,8 +1370,8 @@ const jobPct = j => { const whole = j.state.filter(x => x === 'done' || x === 's
 function jobLine(j){
   const whole = j.state.filter(x => x === 'done' || x === 'skip').length, pct = Math.floor(jobPct(j));
   if (j.status === 'queued') return 'Waiting · ' + whole + ' of ' + j.n + ' sections';
-  if (j.status === 'running') { const cur = j.state.indexOf('busy'); return (cur >= 0 ? `Section ${cur + 1} of ${j.n}` : 'Starting') + ' · ' + pct + '%'; }
-  if (j.status === 'done') return 'Saved ✓ · ' + j.n + ' sections';
+  if (j.status === 'running') { const cur = j.state.indexOf('busy'); return (cur >= 0 ? `${j.kind === 'zip' ? 'Unpacking file' : 'Section'} ${cur + 1} of ${j.n}` : 'Starting') + ' · ' + pct + '%'; }
+  if (j.status === 'done') return 'Saved ✓ · ' + j.n + (j.kind === 'zip' ? ' files' : ' sections');
   if (j.status === 'cancelled') return 'Stopped · ' + whole + ' of ' + j.n + ' saved';
   return (j.note || 'Some sections didn’t save') + ' · ' + whole + ' of ' + j.n + ' saved';
 }
@@ -1283,9 +1392,12 @@ function renderDownloads(){
   const body = $('homeBody');
   let h = divider('Downloads');
   const live = saveTo.jobs;
+  if (canFolder) h += saveTo.root
+    ? `<button class="so-opt" data-importzip="any"><b>Import Zip</b><span>Unpack a zip from your phone into ${esc(saveTo.root.name)} · its own folder</span></button>`
+    : `<button class="so-opt" data-pickfolder><b>Choose Folder</b><span>Pick where your audiobooks go, then you can import zips</span></button>`;
   if (!live.length && !dlHistory.length) h += empty('', 'Nothing downloaded yet. Open a book, tap Get, then Save to Folder.');
   h += live.map(j => `<div class="card dl-card">
-    <div class="dl-top" data-open="${esc(j.id)}" role="button" tabindex="0"><div class="br-main"><div class="br-title">${esc(baseTitle(j.book.title) || j.book.title)}</div>
+    <div class="dl-top" ${String(j.id).startsWith('zip:') ? '' : `data-open="${esc(j.id)}" role="button" tabindex="0"`}><div class="br-main"><div class="br-title">${esc(baseTitle(j.book.title) || j.book.title)}</div>
       <div class="br-author">${esc(saveTo.root ? saveTo.root.name + ' › ' + j.folder : j.folder)}</div></div></div>
     ${pbar(jobPct(j), j.status)}
     <div class="dl-foot"><span class="dl-line">${esc(jobLine(j))}</span>
@@ -1295,7 +1407,7 @@ function renderDownloads(){
   const earlier = dlHistory.filter(hh => !live.some(j => j.id == hh.id));
   if (earlier.length) {
     h += divider('Earlier');
-    h += earlier.map(hh => `<div class="book-row" data-open="${esc(hh.id)}" role="button" tabindex="0"><div class="br-main" style="padding-left:8px"><div class="br-title">${esc(hh.title)}</div>
+    h += earlier.map(hh => `<div class="book-row" ${String(hh.id).startsWith('zip:') ? '' : `data-open="${esc(hh.id)}" role="button" tabindex="0"`}><div class="br-main" style="padding-left:8px"><div class="br-title">${esc(hh.title)}</div>
       <div class="br-author">${esc(hh.root + ' › ' + hh.folder)}</div></div><div class="br-prog"><div class="br-pages">✓</div><div class="br-pct">${esc(new Date(hh.at).toLocaleDateString())}</div></div></div>`).join('');
   }
   body.innerHTML = h;
@@ -1338,12 +1450,13 @@ function renderDownload(){
       if (job && (job.status === 'running' || job.status === 'queued')) h += `<div class="card dl-card">${pbar(jobPct(job), job.status)}<div class="dl-foot"><span class="dl-line">${esc(jobLine(job))}</span><button class="dl-btn" data-dlcancel="${esc(job.id)}">Cancel</button></div></div>`;
       else h += clothBtn('data-savebook', '#5b6633', job && job.status === 'done' ? 'Saved ✓ — Save Again' : job && job.status !== 'done' ? 'Resume Saving' : 'Save to Folder', 'list-btn');
       if (job && job.status === 'failed' && job.note) h += `<div class="so-empty" style="padding:2px 8px 10px">${esc(job.note)} — tap Resume to retry them</div>`;
-      if (job && job.blocked && id) h += `<a class="so-opt" href="${esc(bookZip(b, '64Kbps MP3'))}" download><b>Get it as a Zip instead</b><span>No setup · goes to Downloads · unzip for a folder of the MP3s</span></a>`;
+      if (job && job.blocked && id) h += `<a class="so-opt" href="${esc(bookZip(b, '64Kbps MP3'))}" download><b>1 · Get it as a Zip</b><span>No setup · downloads to your phone’s Downloads</span></a>`;
+      if (!(job && (job.status === 'running' || job.status === 'queued'))) h += `<button class="so-opt" data-importzip><b>${job && job.blocked ? '2 · ' : ''}Import Zip</b><span>Pick the zip you downloaded · unpacks the MP3s into this book’s folder</span></button>`;
     }
   }
   h += divider('Whole Book');
   if (id) {
-    h += row(bookZip(b, '64Kbps MP3'), 'Zip of MP3s', 'Goes to Downloads · unzip it for a folder of the MP3s', false);
+    h += row(bookZip(b, '64Kbps MP3'), 'Zip of MP3s', 'Goes to Downloads · then Import Zip above puts it in your folder', false);
     h += row(bookZip(b, '128Kbps MP3'), 'Zip of MP3s · Higher Quality', '128kbps · about twice the size', false);
   } else if (b.url_zip_file) h += row(https(b.url_zip_file), 'Zip of MP3s', '64kbps · one file', false);
   if (id) h += row(`https://archive.org/download/${id}/${id}_archive.torrent`, 'Torrent', 'Most reliable for big books · needs a torrent app', false);
@@ -1498,14 +1611,16 @@ $('backBtn').onclick = () => { if (screen !== 'home') goHome(); };
 
 // ================= EVENTS =================
 document.querySelectorAll('#tabs .tab').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
+$('zipPick').addEventListener('change', e => importZip(e.target.files && e.target.files[0]));
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-open],[data-more],[data-retry],[data-sample],[data-fav],[data-desc],[data-reopen],[data-grp],[data-reset],[data-searchall],[data-dl],[data-shuffle],[data-moremain],[data-mainretry],[data-ver],[data-reader],[data-rtab],[data-rmore],[data-rretry],[data-ritem],[data-narr],[data-veropen],[data-pickfolder],[data-savebook],[data-dlcancel],[data-dlretry],[data-copycode],[data-relaysetup],[data-relaysave],[data-relaycheck]');
+  const t = e.target.closest('[data-open],[data-more],[data-retry],[data-sample],[data-fav],[data-desc],[data-reopen],[data-grp],[data-reset],[data-searchall],[data-dl],[data-shuffle],[data-moremain],[data-mainretry],[data-ver],[data-reader],[data-rtab],[data-rmore],[data-rretry],[data-ritem],[data-narr],[data-veropen],[data-pickfolder],[data-savebook],[data-dlcancel],[data-dlretry],[data-copycode],[data-relaysetup],[data-relaysave],[data-relaycheck],[data-importzip]');
   if (!t) return;
   if (t.dataset.open) return openBook(t.dataset.open, true, tab !== 'saved');
   if (t.dataset.ver) return switchVersion(t.dataset.ver);
   // only one dropdown open at a time: opening one closes the other
   if (t.hasAttribute('data-pickfolder')) return chooseFolder();
   if (t.hasAttribute('data-savebook')) return saveBook();
+  if (t.hasAttribute('data-importzip')) return pickZip(t.dataset.importzip === 'any' ? null : current);
   if (t.hasAttribute('data-copycode')) { (navigator.clipboard ? navigator.clipboard.writeText(WORKER_CODE) : Promise.reject()).then(() => toast('Code copied — paste it in the Worker editor'), () => toast('Couldn’t copy — long-press to select')); return; }
   if (t.hasAttribute('data-relaysetup')) { showRelaySetup = true; refreshDL(); return; }
   if (t.hasAttribute('data-relaysave') || t.hasAttribute('data-relaycheck')) {
@@ -1521,7 +1636,7 @@ document.addEventListener('click', e => {
     return;
   }
   if (t.dataset.dlcancel) { const jb = saveTo.jobs.find(x => x.id == t.dataset.dlcancel); if (jb) { jb.status = 'cancelled'; refreshDL(); if (saveTo.active !== jb) pump(); } return; }
-  if (t.dataset.dlretry) { const jb = saveTo.jobs.find(x => x.id == t.dataset.dlretry); if (jb) { jb.status = 'queued'; jb.state = jb.state.map(x => x === 'fail' ? 'wait' : x); jb.note = ''; refreshDL(); pump(); } return; }
+  if (t.dataset.dlretry) { const jb = saveTo.jobs.find(x => x.id == t.dataset.dlretry); if (jb) { jb.status = 'queued'; jb.blocked = false; jb.state = jb.state.map(x => x === 'fail' ? 'wait' : x); jb.note = ''; refreshDL(); pump(); } return; }
   if (t.hasAttribute('data-veropen')) { verOpen = !verOpen; if (verOpen) narrOpen = false; const y = window.scrollY; renderBook(); window.scrollTo(0, y); return; }
   if (t.hasAttribute('data-narr')) { narrOpen = !narrOpen; if (narrOpen) verOpen = false; const y = window.scrollY; renderBook(); window.scrollTo(0, y); return; }
   if (t.dataset.reader) { e.stopPropagation(); return openReader(t.dataset.reader, t.dataset.rname); }
